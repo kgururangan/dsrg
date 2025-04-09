@@ -39,4 +39,4 @@ if __name__ == "__main__":
     ref.kernel(semi=True)
 
     driver = DSRG(ref)
-    driver.run_ldsrg2(s=2.0)
+    driver.run_ldsrg2(s=2.0, herm=True)

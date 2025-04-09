@@ -993,3 +993,201 @@ def h2_t2_c2(O, Hbar, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1
     if verbose: print("h2_t2_c2 took {:.4f} seconds to run.".format(t1-t0))
 
     return O
+
+#
+# Optimized Codes
+#
+def make_gamma1_full(gamma1, nbasis, c, a, v):
+    gamma1_full = np.zeros((nbasis, nbasis))
+
+    nC = gamma1_full[c, c].shape[0]
+    nV = gamma1_full[v, v].shape[0]
+    nA = gamma1_full[a, a].shape[0]
+
+    gamma1_full[c, c] = np.eye(nC)
+    gamma1_full[a, a] = gamma1
+    return gamma1_full
+
+def make_eta1_full(eta1, nbasis, c, a, v):
+    eta1_full = np.zeros((nbasis, nbasis))
+
+    nC = eta1_full[c, c].shape[0]
+    nV = eta1_full[v, v].shape[0]
+    nA = eta1_full[a, a].shape[0]
+
+    eta1_full[v, v] = np.eye(nV)
+    eta1_full[a, a] = eta1
+    return eta1_full
+
+#@profile
+def update_zerobody(Hbar, t, gamma1, eta1, gamma1_full, eta1_full, lambdas, orbspace, verbose=False, scale=1.0):
+    t0 = time.time()
+    c = orbspace['core']
+    a = orbspace['active']
+    v = orbspace['virt']
+    hc = orbspace['hole_core']
+    ha = orbspace['hole_active']
+    pa = orbspace['particle_active']
+    pv = orbspace['particle_virt']
+
+    t1, t2 = t # Unpack cluster operator
+    h1, h2 = Hbar # Unpack Hamiltonian
+    lambda2 = lambdas['2'] # 2-cumulant
+
+    ### Dressed T1
+    tau1 = np.einsum("ia,ab,ji->jb", t1, eta1_full[p, p], gamma1_full[h, h], optimize=True)
+    ### C0 <- [H1, t1]
+    C0 = scale * np.einsum("bj,jb->", h1[p, h], tau1, optimize=True)
+    ### C0 <- [H1, t2] + [H2, t1]
+    temp = np.einsum("ex,uvey->uvxy", h1[v, a], t2[ha, ha, pv, pa], optimize=True)
+    temp -= np.einsum("vm,umxy->uvxy", h1[a, c], t2[ha, hc, pa, pa], optimize=True)
+    temp += np.einsum("evxy,ue->uvxy", h2[v, a, a, a], t1[ha, pv], optimize=True)
+    temp -= np.einsum("uvmy,mx->uvxy", h2[a, a, c, a], t1[hc, pa], optimize=True)
+    C0 += scale * 0.5 * np.einsum("uvxy,xyuv->", temp, lambda2, optimize=True)
+    ### C0 <- [H2, t2]
+    C0 += scale * 0.25 * np.einsum("efmn,mnef->", h2[v, v, c, c], t2[hc, hc, pv, pv], optimize=True)
+    #
+    temp1 = np.einsum("ijux,ki,lj->klux", t2[:, :, pa, pa], gamma1_full[h, h], gamma1_full[h, h], optimize=True)
+    temp2 = np.einsum("klux,uv,xy->klvy", temp1, eta1, eta1, optimize=True)
+    C0 += scale * 0.25 * np.einsum("vykl,klvy->", h2[a, a, h, h], temp2, optimize=True)
+    #
+    temp1 = np.einsum("ijue,ki,lj->klue", t2[:, :, pa, pv], gamma1_full[h, h], gamma1_full[h, h], optimize=True)
+    temp2 = np.einsum("klue,uv->klve", temp1, eta1, optimize=True)
+    C0 += scale * 0.5 * np.einsum("vekl,klve->", h2[a, v, h, h], temp2, optimize=True)
+    #
+    temp2 = -np.einsum("fexu,yvef->yvxu", h2[v, v, a, a], t2[ha, ha, pv, pv], optimize=True)
+    C0 += scale * 0.25 * np.einsum("yvxu,xy,uv->", temp2, gamma1, gamma1, optimize=True)
+    #
+    temp2 = -np.einsum("femu,mvef->vu", h2[v, v, c, a], t2[hc, ha, pv, pv], optimize=True)
+    C0 += scale * 0.5 * np.einsum("vu,uv->", temp2, gamma1, optimize=True)
+    #
+    temp1 = np.einsum("uvkl,ki,lj->uvij", h2[a, a, h, h], gamma1_full[h, h], gamma1_full[h, h], optimize=True)
+    temp2 = 0.125 * np.einsum("uvij,ijxy->uvxy", temp1, t2[:, :, pa, pa], optimize=True)
+
+    temp1 = np.einsum("uvab,ac,bd->uvcd", t2[ha, ha, :, :], eta1_full[p, p], eta1_full[p, p], optimize=True)
+    temp2 += 0.125 * np.einsum("uvcd,cdxy->uvxy", temp1, h2[p, p, a, a], optimize=True)
+
+    temp1 = np.einsum("iuay,ji,ab->juby", t2[:, ha, :, pa], gamma1_full[h, h], eta1_full[p, p], optimize=True)
+    temp2 += np.einsum("vbjx,juby->uvxy", h2[a, p, h, a], temp1, optimize=True)
+    C0 += scale * np.einsum("uvxy,xyuv->", temp2, lambda2, optimize=True)
+    #
+    temp1 = np.einsum("uviz,iwxy->uvwxyz", h2[a, a, h, a], t2[:, ha, pa, pa], optimize=True)
+    temp1 += np.einsum("waxy,uvaz->uvwxyz", h2[a, p, a, a], t2[ha, ha, :, pa], optimize=True)
+    C0 += scale * 0.25 * np.einsum("uvwxyz,xyzuvw->", temp1, lambda3, optimize=True)
+
+    t1 = time.time()
+    if verbose: print("zerobody took {:.4f} seconds to run.".format(t1-t0))
+
+    return C0
+
+#@profile
+def update_onebody(C1, F, V, T1, T2, gamma1, eta1, lambda2, lambda3, mf, verbose=False, scale=1.0):
+    t0 = time.time()
+    hc = mf.hc
+    ha = mf.ha
+    pa = mf.pa
+    pv = mf.pv
+    c = mf.core
+    a = mf.active
+    v = mf.virt
+    p = mf.part
+    h = mf.hole
+    norb = F.shape[0]
+    ### Make full Gamma and Eta arrays
+    gamma1_full = make_gamma1_full(gamma1, norb, c, a, v)
+    ### C1 <- [H1, T1]
+    C1[h, :] += scale * np.einsum("ap,ia->ip", F[p, :], T1, optimize=True)
+    C1[:, p] -= scale * np.einsum("pi,ia->pa", F[:, h], T1, optimize=True)
+    ### C1 <- [H1, T2]
+    C1[h, p] += scale * np.einsum("bj,ijab->ia", F[p, c], T2[:, hc, :, :], optimize=True)
+    C1[h, p] += scale * np.einsum("bu,ivab,uv->ia", F[p, a], T2[:, ha, :, :], gamma1, optimize=True)
+    C1[h, p] -= scale * np.einsum("vj,ijau,uv->ia", F[a, h], T2[:, :, :, pa], gamma1, optimize=True)
+    ### C1 <- [H2, T1]
+    C1 += scale * np.einsum("qapm,ma->qp", V[:, p, :, c], T1[hc, :], optimize=True)
+    C1 += scale * np.einsum("qapv,ua,vu->qp", V[:, p, :, a], T1[ha, :], gamma1, optimize=True)
+    C1 -= scale * np.einsum("qvpm,mu,uv->qp", V[:, a, :, c], T1[hc, pa], gamma1, optimize=True)
+    ### C1 <- [H2, T2]
+    temp = np.einsum("abrk,ijab->ijrk", V[p, p, :, h], T2, optimize=True)
+    C1[h, :] += scale * 0.5 * np.einsum("ijrk,kj->ir", temp, gamma1_full[h, h], optimize=True)
+    #
+    temp = np.einsum("ijux,uv,xy->ijvy", T2[:, :, pa, pa], gamma1, gamma1)
+    C1[h, :] += scale * 0.5 * np.einsum("ijvy,vyrj->ir", temp, V[a, a, :, h], optimize=True)
+    #
+    temp = np.einsum("ijub,kj,uv->ikvb", T2[:, :, pa, :], gamma1_full[h, h], gamma1, optimize=True)
+    C1[h, :] -= scale * np.einsum("ikvb,vbrk->ir", temp, V[a, p, :, h], optimize=True)
+    #
+    temp = np.einsum("ijau,uv->ijav", T2[:, :, :, pa], gamma1, optimize=True)
+    C1[:, p] -= scale * 0.5 * np.einsum("ijav,pvij->pa", temp, V[:, a, h, h], optimize=True)
+    #
+    temp = np.einsum("ijab,ki,lj->klab", T2, gamma1_full[h, h], gamma1_full[h, h], optimize=True)
+    C1[:, p] -= scale * 0.5 * np.einsum("klab,pbkl->pa", temp, V[:, p, h, h], optimize=True)
+    #
+    temp = np.einsum("ijau,uv,kj->ikav", T2[:, :, :, pa], gamma1, gamma1_full[h, h], optimize=True)
+    C1[:, p] += scale * np.einsum("ikav,pvik->pa", temp, V[:, a, h, h], optimize=True)
+    #
+    temp = np.einsum("ijxy,xyuv->ijuv", T2[:, :, pa, pa], lambda2, optimize=True)
+    C1[h, :] += scale * 0.25 * np.einsum("ijuv,uvrj->ir", temp, V[a, a, :, h], optimize=True)
+    #
+    temp = np.einsum("uvab,xyuv->xyab", T2[ha, ha, :, :], lambda2, optimize=True)
+    C1[:, p] -= scale * 0.25 * np.einsum("xyab,pbxy->pa", temp, V[:, p, a, a], optimize=True)
+    #
+    temp = np.einsum("iyav,uvxy->iuax", T2[:, ha, :, pa], lambda2, optimize=True)
+    C1[h, :] += scale * np.einsum("iuax,axru->ir", temp, V[p, a, :, a], optimize=True)
+    C1[:, p] -= scale * np.einsum("iuax,pxiu->pa", temp, V[:, a, h, a], optimize=True)
+    #
+    temp = np.einsum("avxy,xyuv->au", V[p, a, a, a], lambda2, optimize=True)
+    C1[h, p] += scale * 0.5 * np.einsum("au,ujab->jb", temp, T2[ha, :, :, :], optimize=True)
+    #
+    temp = np.einsum("xyiv,uvxy->ui", V[a, a, h, a], lambda2, optimize=True)
+    C1[h, p] -= scale * 0.5 * np.einsum("ui,ijub->jb", temp, T2[:, :, pa, :], optimize=True)
+    #
+    temp = np.einsum("uvey,xyuv->xe", T2[ha, ha, pv, pa], lambda2, optimize=True)
+    C1 += scale * 0.5 * np.einsum("xe,eqxs->qs", temp, V[v, :, a, :], optimize=True)
+    #
+    temp = np.einsum("myuv,uvxy->mx", T2[hc, ha, pa, pa], lambda2, optimize=True)
+    C1 -= scale * 0.5 * np.einsum("mx,xqms->qs", temp, V[a, :, c, :], optimize=True)
+    t1 = time.time()
+    if verbose: print("C1 took {:.4f} seconds to run.".format(t1-t0))
+    return C1
+
+#@profile
+def update_twobody(C2, F, V, T1, T2, gamma1, eta1, lambda2, lambda3, mf, verbose=False, scale=1.0):
+    t0 = time.time()
+    hc = mf.hc
+    ha = mf.ha
+    pa = mf.pa
+    pv = mf.pv
+    c = mf.core
+    a = mf.active
+    v = mf.virt
+    p = mf.part
+    h = mf.hole
+    norb = F.shape[0]
+    ### Make full Gamma and Eta arrays
+    gamma1_full = make_gamma1_full(gamma1, norb, c, a, v)
+    ### C2 <- [H1, T2]
+    C2[h, h, :, p] += scale * 0.5 * np.einsum("ap,ijab->ijpb", F[p, :], T2, optimize=True)
+    C2[:, h, p, p] -= scale * 0.5 * np.einsum("qi,ijab->qjab", F[:, h], T2, optimize=True)
+    ### C2 <- [H2, T1]
+    C2[h, :, :, :] += scale * 0.5 * np.einsum("arpq,ia->irpq", V[p, :, :, :], T1, optimize=True)
+    C2[:, :, p, :] -= scale * 0.5 * np.einsum("rsiq,ia->rsaq", V[:, :, h, :], T1, optimize=True)
+    ### C2 <- [H2, T2]
+    # particle-particle contractions
+    C2[h, h, :, :] += scale * 0.125 * np.einsum("abrs,ijab->ijrs", V[p, p, :, :], T2, optimize=True)
+    temp = np.einsum("ijbx,xy->ijby", T2[:, :, :, pa], gamma1, optimize=True)
+    C2[h, h, :, :] -= scale * 0.25 * np.einsum("ijby,byrs->ijrs", temp, V[p, a, :, :], optimize=True)
+    # hole-hole contractions
+    C2[:, :, p, p] += scale * 0.125 * np.einsum("pqij,ijab->pqab", V[:, :, h, h], T2, optimize=True)
+    temp = np.einsum("yjab,xy->xjab", T2[ha, :, :, :], eta1, optimize=True)
+    C2[:, :, p, p] -= scale * 0.25 * np.einsum("xjab,pqxj->pqab", temp, V[:, :, a, h], optimize=True)
+    # particle-hole contractions
+    temp = np.einsum("ijab,ki->kjab", T2, gamma1_full[h, h], optimize=True)
+    C2[:, h, :, p] += scale * np.einsum("kjab,aqks->qjsb", temp, V[p, :, h, :], optimize=True)
+    temp = np.einsum("ijub,uv->ijvb", T2[:, :, pa, :], gamma1, optimize=True)
+    C2[:, h, :, p] -= scale * np.einsum("ijvb,vqis->qjsb", temp, V[a, :, h, :], optimize=True)
+    # antisymmetrize
+    C2 -= np.transpose(C2, (1, 0, 2, 3))
+    C2 -= np.transpose(C2, (0, 1, 3, 2))
+    t1 = time.time()
+    if verbose: print("C2 took {:.4f} seconds to run.".format(t1-t0))
+    return C2

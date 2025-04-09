@@ -32,12 +32,12 @@ if __name__ == "__main__":
     cas = (nelcas, nact)
 
     # Run CASCI
-    mycas = mcscf.CASSCF(mf, cas[1], cas[0])
+    mycas = mcscf.CASCI(mf, cas[1], cas[0])
     mycas.run()
 
     ref = SpinReference(mycas, mf, verbose=True)
     ref.kernel(semi=True)
 
     driver = SpinDSRG(ref)
-    driver.run_ldsrg2(s=2.0)
+    driver.run_ldsrg2(s=2.0, herm=False)
 
