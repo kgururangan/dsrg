@@ -1,6 +1,71 @@
 import time
 import numpy as np
 
+def h_t_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.0):
+    c = orbspace['core_alpha']
+    C = orbspace['core_beta']
+    a = orbspace['active_alpha']
+    A = orbspace['active_beta']
+    v = orbspace['virt_alpha']
+    V = orbspace['virt_beta']
+    hc = orbspace['hole_core_alpha']
+    hC = orbspace['hole_core_beta']
+    ha = orbspace['hole_active_alpha']
+    hA = orbspace['hole_active_beta']
+    pa = orbspace['particle_active_alpha']
+    pA = orbspace['particle_active_beta']
+    pv = orbspace['particle_virt_alpha']
+    pV = orbspace['particle_virt_beta']
+    #
+    hole_a = orbspace['hole_alpha']
+    part_a = orbspace['particle_alpha']
+    hole_b = orbspace['hole_beta']
+    part_b = orbspace['particle_beta']
+
+    # [H1, T1]
+    O['0'] += scale * (
+            np.einsum("me,em->", h['a'][c, v], t['a'][pv, hc], optimize=True)
+            + np.einsum("xe,ey,xy->", h['a'][a, v], t['a'][pv, ha], gamma1['a'], optimize=True)
+            + np.einsum("mx,ym,yx->", h['a'][c, a], t['a'][pa, hc], eta1['a'], optimize=True)
+    )
+    O['0'] += scale * (
+            np.einsum("me,em->", h['b'][C, V], t['b'][pV, hC], optimize=True)
+            + np.einsum("xe,ey,xy->", h['b'][A, V], t['b'][pV, hA], gamma1['b'], optimize=True)
+            + np.einsum("mx,ym,yx->", h['b'][C, A], t['b'][pA, hC], eta1['b'], optimize=True)
+    )
+
+    # [H1, T2] + [H2, T1]
+    temp = (
+            np.einsum("xe,eyuv->xyuv", h['a'][a, v], t['aa'][pv, pa, ha, ha], optimize=True)
+            - np.einsum("mv,xyum->xyuv", h['a'][c, a], t['aa'][pa, pa, ha, hc], optimize=True)
+            + np.einsum("xyev,eu->xyuv", h['aa'][a, a, v, a], t['a'][pv, ha], optimize=True)
+            - np.einsum("myuv,xm->xyuv", h['aa'][c, a, a, a], t['a'][pa, hc], optimize=True)
+    )
+    O['0'] += 0.5 * scale * np.einsum("xyuv,xyuv->", temp, lambdas['aa'], optimize=True) 
+
+    temp = (
+            np.einsum("xe,eyuv->xyuv", h['b'][A, V], t['bb'][pV, pA, hA, hA], optimize=True)
+            - np.einsum("mv,xyum->xyuv", h['b'][C, A], t['bb'][pA, pA, hA, hC], optimize=True)
+            + np.einsum("xyev,eu->xyuv", h['bb'][A, A, V, A], t['b'][pV, hA], optimize=True)
+            - np.einsum("myuv,xm->xyuv", h['bb'][C, A, A, A], t['b'][pA, hC], optimize=True)
+    )
+    O['0'] += 0.5 * scale * np.einsum("xyuv,xyuv->", temp, lambdas['bb'], optimize=True)
+
+    temp = (
+            np.einsum("xe,eYuV->xYuV", h['a'][a, v], t['ab'][pv, pA, ha, hA], optimize=True)
+            + np.einsum("YE,xEuV->xYuV", h['b'][A, V], t['ab'][pa, pV, ha, hA], optimize=True)
+            - np.einsum("MV,xYuM->xYuV", h['b'][C, A], t['ab'][pa, pA, ha, hC], optimize=True)
+            - np.einsum("mu,xYmV->xYuV", h['a'][c, a], t['ab'][pa, pA, hc, hA], optimize=True)
+            + np.einsum("xYeV,eu->xYuV", h['ab'][a, A, v, A], t['a'][pv, ha], optimize=True)
+            + np.einsum("xYuE,EV->xYuV", h['ab'][a, A, a, V], t['b'][pV, hA], optimize=True)
+            - np.einsum("mYuV,xm->xYuV", h['ab'][c, A, a, A], t['a'][pa, hc], optimize=True)
+            - np.einsum("xMuV,YM->xYuV", h['ab'][a, C, a, A], t['b'][pA, hC], optimize=True)
+
+    )
+    O['0'] += scale * np.einsum("xYuV,xYuV->", temp, lambdas['ab'], optimize=True)
+
+    return O
+
 def h1_t1_c1(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.0):
     t0 = time.time()
     c = orbspace['core_alpha']
