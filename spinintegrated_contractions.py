@@ -1,87 +1,6 @@
 import time
 import numpy as np
 
-def h2b_t2b_c2b_opt(O, h, t, gamma1, gamma1_full, eta1, eta1_full, lambdas, orbspace, verbose=False, scale=1.0):
-    # 324 lines
-    c = orbspace['core_alpha']
-    C = orbspace['core_beta']
-    a = orbspace['active_alpha']
-    A = orbspace['active_beta']
-    v = orbspace['virt_alpha']
-    V = orbspace['virt_beta']
-    hc = orbspace['hole_core_alpha']
-    hC = orbspace['hole_core_beta']
-    ha = orbspace['hole_active_alpha']
-    hA = orbspace['hole_active_beta']
-    pa = orbspace['particle_active_alpha']
-    pA = orbspace['particle_active_beta']
-    pv = orbspace['particle_virt_alpha']
-    pV = orbspace['particle_virt_beta']
-    #
-    hole_a = orbspace['hole_alpha']
-    part_a = orbspace['particle_alpha']
-    hole_b = orbspace['hole_beta']
-    part_b = orbspace['particle_beta']
-    ### C2 <- [H2, T2]
-    # particle-particle contractions
-    O['ab'][:, :, hole_a, hole_b] += scale * 0.125 * np.einsum("rsab,abij->rsij", h['ab'][:, :, part_a, part_b], t['ab'], optimize=True)
-    temp = np.einsum("bxij,xy->byij", t['ab'][:, pb, :, :], gamma1['b'], optimize=True)
-    O['ab'][:, :, hole_a, hole_b] -= scale * 0.25 * np.einsum("byij,rsby->rsij", temp, h['ab'][:, :, part_a, A], optimize=True)
-    # hole-hole contractions
-    O['ab'][part_a, part_b, :, :] += scale * 0.125 * np.einsum("ijpq,abij->abpq", h['ab'][hole_a, hole_b, :, :], t['ab'], optimize=True)
-    temp = np.einsum("abyj,xy->abxj", t['ab'][:, :, ha, :], eta1['a'], optimize=True)
-    O['ab'][part_a, part_b, :, :] -= scale * 0.25 * np.einsum("abxj,xjpq->abpq", temp, h['ab'][a, hole_b, :, :], optimize=True)
-    # particle-hole contractions
-    temp = np.einsum("abij,ki->abkj", t['ab'], gamma1_full['a'][hole_a, hole_a], optimize=True)
-    O['ab'][:, part_b, :, hole_b] += scale * np.einsum("abkj,skqa->sbqj", temp, h['ab'][hole_a, :, part_a, :], optimize=True)
-    temp = np.einsum("ubij,uv->vbij", t['aa'][pa, :, :, :], gamma1['a'], optimize=True)
-    O['ab'][:, part_b, :, hole_b] -= scale * np.einsum("vbij,isvq->sbqj", temp, h['aa'][hole_a, :, a, :], optimize=True)
-    return O
-
-def h2a_t2a_c2a_opt(O, h, t, gamma1, gamma1_full, eta1, eta1_full, lambdas, orbspace, verbose=False, scale=1.0):
-    # 324 lines
-    c = orbspace['core_alpha']
-    C = orbspace['core_beta']
-    a = orbspace['active_alpha']
-    A = orbspace['active_beta']
-    v = orbspace['virt_alpha']
-    V = orbspace['virt_beta']
-    hc = orbspace['hole_core_alpha']
-    hC = orbspace['hole_core_beta']
-    ha = orbspace['hole_active_alpha']
-    hA = orbspace['hole_active_beta']
-    pa = orbspace['particle_active_alpha']
-    pA = orbspace['particle_active_beta']
-    pv = orbspace['particle_virt_alpha']
-    pV = orbspace['particle_virt_beta']
-    #
-    hole_a = orbspace['hole_alpha']
-    part_a = orbspace['particle_alpha']
-    hole_b = orbspace['hole_beta']
-    part_b = orbspace['particle_beta']
-    ### C2 <- [H2, T2]
-    # particle-particle contractions
-    O['aa'][:, :, hole_a, hole_a] += scale * 0.125 * np.einsum("rsab,abij->rsij", h['aa'][:, :, part_a, part_a], t['aa'], optimize=True)
-    temp = np.einsum("bxij,xy->byij", t['aa'][:, pa, :, :], gamma1['a'], optimize=True)
-    O['aa'][:, :, hole_a, hole_a] -= scale * 0.25 * np.einsum("byij,rsby->rsij", temp, h['aa'][:, :, part_a, a], optimize=True)
-    # hole-hole contractions
-    O['aa'][part_a, part_a, :, :] += scale * 0.125 * np.einsum("ijpq,abij->abpq", h['aa'][hole_a, hole_a, :, :], t['aa'], optimize=True)
-    temp = np.einsum("abyj,xy->abxj", t['aa'][:, :, ha, :], eta1['a'], optimize=True)
-    O['aa'][part_a, part_a, :, :] -= scale * 0.25 * np.einsum("abxj,xjpq->abpq", temp, h['aa'][a, hole_a, :, :], optimize=True)
-    # particle-hole contractions
-    temp = np.einsum("abij,ki->abkj", t['aa'], gamma1_full['a'][hole_a, hole_a], optimize=True)
-    O['aa'][:, part_a, :, hole_a] += scale * np.einsum("abkj,ksaq->sbqj", temp, h['aa'][hole_a, :, part_a, :], optimize=True)
-    temp = np.einsum("ubij,uv->vbij", t['aa'][pa, :, :, :], gamma1['a'], optimize=True)
-    O['aa'][:, part_a, :, hole_a] -= scale * np.einsum("vbij,isvq->sbqj", temp, h['aa'][hole_a, :, a, :], optimize=True)
-    #
-    #O['aa'][:, part_a, :, hole_a] += np.einsum("kpaq,abij,ki->pbqj", h['aa'][hole_a, :, part_a, :], t['aa'], gamma1_full['a'][hole_a, hole_a], optimize=True)
-    #O['aa'][:, part_a, :, hole_a] -= np.einsum("ipyq,xbij,xy->pbqj", h['aa'][hole_a, :, a, :], t['aa'][pa, :, :, :], gamma1['a'], optimize=True)
-    #
-    #O['aa'][:, part_a, :, hole_a] += np.einsum("kpaq,cbij,ki,ca->pbqj", h['aa'][hole_a, :, part_a, :], t['aa'], gamma1_full['a'][hole_a, hole_a], eta1_full[part_a, part_a], optimize=True)
-    #O['aa'][:, part_a, :, hole_a] -= np.einsum("ipyq,xbij,xy->pbqj", h['aa'][hole_a, :, a, :], t['aa'][pa, :, :, :], gamma1['a'], eta1['a'], optimize=True)
-
-    return O
-
 def h1a_t1a_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.0):
     # 5 lines
     t0 = time.time()
@@ -331,6 +250,9 @@ def h2a_t2a_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     
     O['0'] += scale * +0.12500000 * np.einsum('uvab,uvwx,abwx->', h['aa'][a,a,v,v], lambdas['aa'], t['aa'][pv,pv,ha,ha], optimize=True)
 
+    O['0'] += scale * +0.25000000 * np.einsum('iuvw,uxyvwz,xyiz->', h['aa'][c,a,a,a], lambdas['aaa'], t['aa'][pa,pa,hc,ha], optimize=True)
+    O['0'] += scale * -0.25000000 * np.einsum('uvwa,uvxwyz,xayz->', h['aa'][a,a,a,v], lambdas['aaa'], t['aa'][pa,pv,ha,ha], optimize=True)
+
     t1 = time.time()
     if verbose: print("h2a_t2a_c0 took {:.4f} seconds to run.".format(t1-t0))
 
@@ -363,6 +285,8 @@ def h2a_t2b_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     
     
     O['0'] += scale * -1.00000000 * np.einsum('iuva,uUvV,aUiV->', h['aa'][c,a,a,v], lambdas['ab'], t['ab'][pv,pA,hc,hA], optimize=True)
+    O['0'] += scale * +0.50000000 * np.einsum('iuvw,uxUvwV,xUiV->', h['aa'][c,a,a,a], lambdas['aab'], t['ab'][pa,pA,hc,hA], optimize=True)
+    O['0'] += scale * +0.50000000 * np.einsum('uvwa,uvUwxV,aUxV->', h['aa'][a,a,a,v], lambdas['aab'], t['ab'][pv,pA,ha,hA], optimize=True)
     
 
     t1 = time.time()
@@ -455,6 +379,8 @@ def h2b_t2a_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     
     
     O['0'] += scale * -1.00000000 * np.einsum('iUaV,uUvV,uaiv->', h['ab'][c,A,v,A], lambdas['ab'], t['aa'][pa,pv,hc,ha], optimize=True)
+    O['0'] += scale * -0.50000000 * np.einsum('iUuV,vwUuxV,vwix->', h['ab'][c,A,a,A], lambdas['aab'], t['aa'][pa,pa,hc,ha], optimize=True)
+    O['0'] += scale * -0.50000000 * np.einsum('uUaV,uvUwxV,vawx->', h['ab'][a,A,v,A], lambdas['aab'], t['aa'][pa,pv,ha,ha], optimize=True)
     
 
     t1 = time.time()
@@ -539,6 +465,10 @@ def h2b_t2b_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     
     O['0'] += scale * +1.00000000 * np.einsum('uUaA,uUvV,aAvV->', h['ab'][a,A,v,V], lambdas['ab'], t['ab'][pv,pV,ha,hA], optimize=True)
 
+    O['0'] += scale * -1.00000000 * np.einsum('iUuV,vUWuVX,vWiX->', h['ab'][c,A,a,A], lambdas['abb'], t['ab'][pa,pA,hc,hA], optimize=True)
+    O['0'] += scale * -1.00000000 * np.einsum('uIvU,uwVvxU,wVxI->', h['ab'][a,C,a,A], lambdas['aab'], t['ab'][pa,pA,ha,hC], optimize=True)
+    O['0'] += scale * +1.00000000 * np.einsum('uUvA,uwUvxV,wAxV->', h['ab'][a,A,a,V], lambdas['aab'], t['ab'][pa,pV,ha,hA], optimize=True)
+    O['0'] += scale * +1.00000000 * np.einsum('uUaV,uUWvVX,aWvX->', h['ab'][a,A,v,A], lambdas['abb'], t['ab'][pv,pA,ha,hA], optimize=True)
     t1 = time.time()
     if verbose: print("h2b_t2b_c0 took {:.4f} seconds to run.".format(t1-t0))
 
@@ -571,6 +501,8 @@ def h2b_t2c_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     
     
     O['0'] += scale * -1.00000000 * np.einsum('uIvA,uUvV,UAIV->', h['ab'][a,C,a,V], lambdas['ab'], t['bb'][pA,pV,hC,hA], optimize=True)
+    O['0'] += scale * -0.50000000 * np.einsum('uIvU,uVWvUX,VWIX->', h['ab'][a,C,a,A], lambdas['abb'], t['bb'][pA,pA,hC,hA], optimize=True)
+    O['0'] += scale * -0.50000000 * np.einsum('uUvA,uUVvWX,VAWX->', h['ab'][a,A,a,V], lambdas['abb'], t['bb'][pA,pV,hA,hA], optimize=True)
     
 
     t1 = time.time()
@@ -634,6 +566,8 @@ def h2c_t2b_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     
     
     O['0'] += scale * -1.00000000 * np.einsum('IUVA,uUvV,uAvI->', h['bb'][C,A,A,V], lambdas['ab'], t['ab'][pa,pV,ha,hC], optimize=True)
+    O['0'] += scale * +0.50000000 * np.einsum('IUVW,uUXvVW,uXvI->', h['bb'][C,A,A,A], lambdas['abb'], t['ab'][pa,pA,ha,hC], optimize=True)
+    O['0'] += scale * +0.50000000 * np.einsum('UVWA,uUVvWX,uAvX->', h['bb'][A,A,A,V], lambdas['abb'], t['ab'][pa,pV,ha,hA], optimize=True)
     
 
     t1 = time.time()
@@ -687,6 +621,8 @@ def h2c_t2c_c0(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.
     O['0'] += scale * +1.00000000 * np.einsum('IUVA,UWVX,WAIX->', h['bb'][C,A,A,V], lambdas['bb'], t['bb'][pA,pV,hC,hA], optimize=True)
     
     O['0'] += scale * +0.12500000 * np.einsum('UVAB,UVWX,ABWX->', h['bb'][A,A,V,V], lambdas['bb'], t['bb'][pV,pV,hA,hA], optimize=True)
+    O['0'] += scale * +0.25000000 * np.einsum('IUVW,UXYVWZ,XYIZ->', h['bb'][C,A,A,A], lambdas['bbb'], t['bb'][pA,pA,hC,hA], optimize=True)
+    O['0'] += scale * -0.25000000 * np.einsum('UVWA,UVXWYZ,XAYZ->', h['bb'][A,A,A,V], lambdas['bbb'], t['bb'][pA,pV,hA,hA], optimize=True)
 
     t1 = time.time()
     if verbose: print("h2c_t2c_c0 took {:.4f} seconds to run.".format(t1-t0))

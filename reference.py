@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from pyscf_tools import make_casci_rdm12s, make_casci_rdm12
+from pyscf_tools import make_casci_rdm123s, make_casci_rdm123
 
 class Reference:
     
@@ -93,7 +93,7 @@ class Reference:
             print("CAS energy computed via RDMs does not match!")
         
     def make_rdms(self):
-        self.rdms = make_casci_rdm12s(self.mc, self.cas)
+        self.rdms = make_casci_rdm123s(self.mc, self.cas[1], self.nelcas_alpha, self.nelcas_beta)
 
     def make_cumulants(self):
 
@@ -131,19 +131,64 @@ class Reference:
         lam2aa = -np.einsum("uw,vx->uvwx", gam1a, gam1a, optimize=True)
         lam2aa -= lam2aa.transpose(1, 0, 2, 3)
         lam2aa += self.rdms['aa']
-
+        #
         lam2ab = -np.einsum("uw,vx->uvwx", gam1a, gam1b, optimize=True)
         lam2ab += self.rdms['ab']
-
+        #
         lam2bb = -np.einsum("uw,vx->uvwx", gam1b, gam1b, optimize=True)
         lam2bb -= lam2bb.transpose(1, 0, 2, 3)
         lam2bb += self.rdms['bb']
+
+        # Make 3-body cumulants
+        # l(abcijk) = g(abcijk) - A(a/bc)A(i/jk) g(ai)g(bcjk) + 2*A(ijk) g(ai)g(bj)g(ck)
+        lam3aaa = self.rdms['aaa'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['a'], self.rdms['aa'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) + np.transpose(temp, (2, 1, 0, 3, 4, 5)) # (a/bc)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3aaa -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['a'], self.rdms['a'], self.rdms['a'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3aaa += 2.0 * temp
+        # l(abc~ijk~) = g(abc~ijk~) - A(ab)A(ij) g(ai)g(bc~jk~) - g(c~k~)g(abij) + 2*A(ij) g(ai)g(bj)g(c~k~)
+        lam3aab = self.rdms['aab'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['a'], self.rdms['ab'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) # (ab)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) # (ij)
+        lam3aab -= temp
+        temp = np.einsum("ck,abij->abcijk", self.rdms['b'], self.rdms['aa'], optimize=True)
+        lam3aab -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['a'], self.rdms['a'], self.rdms['b'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) # (ij)
+        lam3aab += 2.0 * temp
+        # l(ab~c~ij~k~) = g(ab~c~ij~k~) - g(ai)g(b~c~j~k~) - A(bc)A(jk) g(b~j~)g(ac~ik~) + 2*A(jk) g(ai)g(b~j~)g(c~k~)
+        lam3abb = self.rdms['abb'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['a'], self.rdms['bb'], optimize=True)
+        lam3abb -= temp
+        temp = np.einsum("bj,acik->abcijk", self.rdms['b'], self.rdms['ab'], optimize=True)
+        temp -= np.transpose(temp, (0, 2, 1, 3, 4, 5)) # (bc)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        lam3abb -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['a'], self.rdms['b'], self.rdms['b'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        lam3abb += 2.0 * temp
+        # l(a~b~c~i~j~k~) = g(a~b~c~i~j~k~) - A(a/bc)A(i/jk) g(a~i~)g(b~c~j~k~) + 2*A(ijk) g(a~i~)g(b~j~)g(c~k~)
+        lam3bbb = self.rdms['bbb'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['b'], self.rdms['bb'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) + np.transpose(temp, (2, 1, 0, 3, 4, 5)) # (a/bc)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3bbb -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['b'], self.rdms['b'], self.rdms['b'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3bbb += 2.0 * temp
 
         self.gam1 = {'a': gam1a, 'b': gam1b}
         self.gam1_full = {'a': gam1a_full, 'b': gam1b_full}
         self.eta1 = {'a': eta1a, 'b': eta1b}
         self.eta1_full = {'a': eta1a_full, 'b': eta1b_full}
-        self.lambdas = {'aa': lam2aa, 'ab': lam2ab, 'bb': lam2bb}
+        self.lambdas = {'aa': lam2aa, 'ab': lam2ab, 'bb': lam2bb,
+                        'aaa': lam3aaa, 'aab': lam3aab, 'abb': lam3abb, 'bbb': lam3bbb}
         
     def make_hf_integrals(self):
         mo_coeff = self.mf.mo_coeff
@@ -220,6 +265,12 @@ class Reference:
             return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(U), np.conj(U), U, U, optimize=True)
         def _rotate_2(Ua, Ub, V):
             return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(Ua), np.conj(Ub), Ua, Ub, optimize=True)
+        def _rotate_3s(U, W):
+            return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(U), np.conj(U), np.conj(U), U, U, U, optimize=True)
+        def _rotate_3b(Ua, Ub, W):
+            return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua), np.conj(Ua), np.conj(Ub), Ua, Ua, Ub, optimize=True)
+        def _rotate_3c(Ua, Ub, W):
+            return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua), np.conj(Ub), np.conj(Ub), Ua, Ub, Ub, optimize=True)
         a = self.orbspace['active_alpha']
         A = self.orbspace['active_beta']
         # semi-canonicalize 1- and 2-body integrals
@@ -236,6 +287,10 @@ class Reference:
         self.rdms['aa'] = _rotate_2s(self.U['a'][a, a], self.rdms['aa'])
         self.rdms['ab'] = _rotate_2(self.U['a'][a, a], self.U['b'][A, A], self.rdms['ab'])
         self.rdms['bb'] = _rotate_2s(self.U['b'][A, A], self.rdms['bb'])
+        self.rdms['aaa'] = _rotate_3s(self.U['a'][a, a], self.rdms['aaa'])
+        self.rdms['aab'] = _rotate_3b(self.U['a'][a, a], self.U['b'][A, A], self.rdms['aab'])
+        self.rdms['abb'] = _rotate_3c(self.U['a'][a, a], self.U['b'][A, A], self.rdms['abb'])
+        self.rdms['bbb'] = _rotate_3s(self.U['b'][A, A], self.rdms['bbb'])
 
     def compute_cas_energy(self):
         c = self.orbspace['core_alpha']
@@ -308,6 +363,7 @@ class SpinReference:
         self.norb = 2 * mc.mo_coeff.shape[1]
         self.nuclear_repulsion = self.mf.mol.energy_nuc()
         self.nelecas = sum(self.mc.nelecas)
+        self.nelcas_alpha, self.nelcas_beta = self.mc.nelecas
         self.cas = (self.nelecas, 2*self.mc.ncas)
         self.ncore = self.nelectron - self.nelecas 
         self.nact = self.cas[1]
@@ -374,7 +430,7 @@ class SpinReference:
             print("CAS energy computed via RDMs does not match!")
         
     def make_rdms(self):
-        self.rdms = make_casci_rdm12(self.mc, self.cas)
+        self.rdms = make_casci_rdm123(self.mc, self.cas[1], self.nelcas_alpha, self.nelcas_beta)
 
     def make_cumulants(self):
 

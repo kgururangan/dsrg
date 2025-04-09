@@ -230,7 +230,7 @@ def make_nbody_elements(op1, op2, nbody, spincase, fmt='slice', keys_in=None, do
 if __name__ == "__main__":
     import itertools
 
-    remove_lambda3 = True
+    remove_lambda3 = False
     if remove_lambda3:
         print("WARNING: no 3-cumulant included!")
 
@@ -366,10 +366,9 @@ if __name__ == "__main__":
     slicedef += "\tpV = orbspace['particle_virt_beta']\n"
 
     nfiles = 0
-    with open(f'/Users/karthik/Dropbox/dsrgpy/spinintegrated_contractions.py', 'w') as f:
-    #with open(f'tmp.py', 'w') as f:
+    with open(f'output.py', 'w') as f:
         for key in input_dict.keys():
-            #if 'c2b' not in key: continue
+            if 'c0' not in key: continue
             code, nlines = make_nbody_elements(*input_dict[key], remove_lambda3=remove_lambda3)
             print(key, nlines)
             if nlines == 0: continue

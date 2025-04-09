@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     mol = gto.M(atom='''H 0 0 0; F 0 0 1.5''', 
                 spin=0, 
-                basis='6-31g', 
+                basis='cc-pvtz', 
                 unit='angstrom', 
                 verbose=VERBOSE, 
                 symmetry="C2v"
@@ -49,14 +49,4 @@ if __name__ == "__main__":
 
     driver = DSRG(ref)
     driver.run_ldsrg2(s=2.0, herm=True)
-
-    print("   MR-LDSRG(2) correlation energy should be: -0.124561555381")
-
-    #
-    # Check the results
-    # Source: MR-LDSRG(2) Results from 4c-DSRG-MRPT (Brian's code)
-    # (excludes 3-cumulant in energy)
-    #
-    assert np.isclose(ref.e_cas, -99.9015526, rtol=RTOL)
-    assert np.isclose(driver.e_dsrg2 + ref.e_cas, -100.026114187584, rtol=RTOL)
 
