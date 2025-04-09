@@ -1,9 +1,18 @@
+import sys, os
+# Get the current file's directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Get the parent directory
+parent_dir = os.path.dirname(current_dir)
+# Add the parent directory to sys.path
+sys.path.append(parent_dir)
+
 import numpy as np
 from pyscf import gto, scf, mcscf, fci
 from reference import SpinReference
-from correlation import SpinDSRG
+from dsrg_spinorb import SpinDSRG
 
 VERBOSE = 0
+RTOL = 1.0e-07
 
 if __name__ == "__main__":
 
@@ -39,5 +48,14 @@ if __name__ == "__main__":
     ref.kernel(semi=True)
 
     driver = SpinDSRG(ref)
-    driver.run_ldsrg2(s=2.0, herm=False)
+    driver.run_ldsrg2(s=2.0, herm=True)
 
+    print("   MR-LDSRG(2) correlation energy should be: -0.124561555381")
+
+    #
+    # Check the results
+    # Source: MR-LDSRG(2) Results from 4c-DSRG-MRPT (Brian's code)
+    # (excludes 3-cumulant in energy)
+    #
+    assert np.isclose(ref.e_cas, -99.9015526, rtol=RTOL)
+    assert np.isclose(driver.e_dsrg2 + ref.e_cas, -100.026114187584, rtol=RTOL)
