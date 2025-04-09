@@ -129,80 +129,80 @@ def h2_t2_c1(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.0)
     #
     O['a'][:, hole_a] += 0.5 * scale * np.einsum("rmab,abim->ri", h['aa'][:, c, part_a, part_a], t['aa'][:, :, :, hc], optimize=True)
     O['a'][:, hole_a] += scale * np.einsum("rMaB,aBiM->ri", h['ab'][:, C, part_a, part_b], t['ab'][:, :, :, hC], optimize=True)
-    #O['b'][:, hole_b] += 0.5 * scale * np.einsum("RMAB,ABIM->RI", h['bb'][:, C, part_b, part_b], t['bb'][:, :, :, hC], optimize=True)
-    #O['b'][:, hole_b] += scale * np.einsum("mRaB,aBmI->RI", h['ab'][c, A, part_a, part_b], t['ab'][:, :, hc, :], optimize=True)
+    O['b'][:, hole_b] += 0.5 * scale * np.einsum("RMAB,ABIM->RI", h['bb'][:, C, part_b, part_b], t['bb'][:, :, :, hC], optimize=True)
+    O['b'][:, hole_b] += scale * np.einsum("mRaB,aBmI->RI", h['ab'][c, :, part_a, part_b], t['ab'][:, :, hc, :], optimize=True)
 
     O['a'][:, hole_a] += 0.5 * scale * np.einsum("ruab,abiv,uv->ri", h['aa'][:, a, part_a, part_a], t['aa'][:, :, :, ha], gamma1['a'], optimize=True)
     O['a'][:, hole_a] += scale * np.einsum("rUaB,aBiV,UV->ri", h['ab'][:, A, part_a, part_b], t['ab'][:, :, :, hA], gamma1['b'], optimize=True)
-    #C1["IR"] += 0.5 * alpha * Gamma1_["UV"] * T2["IVAB"] * H2["ABRU"];
-    #C1["IR"] += alpha * Gamma1_["uv"] * T2["vIaB"] * H2["aBuR"];
+    O['b'][:, hole_b] += 0.5 * scale * np.einsum("ruab,abiv,uv->ri", h['bb'][:, A, part_b, part_b], t['bb'][:, :, :, hA], gamma1['b'], optimize=True)
+    O['b'][:, hole_b] += scale * np.einsum("uRaB,aBvI,uv->RI", h['ab'][a, :, part_a, part_b], t['ab'][:, :, ha, :], gamma1['a'], optimize=True)
 
     O['a'][:, hole_a] += 0.5 * scale * np.einsum("rjvy,uxij,xy,uv->ri", h['aa'][:, hole_a, a, a], t['aa'][pa, pa, :, :], gamma1['a'], gamma1['a'], optimize=True)
-    #C1["IR"] += 0.5 * alpha * T2["IJUX"] * Gamma1_["XY"] * Gamma1_["UV"] * H2["VYRJ"];
+    O['b'][:, hole_b] += 0.5 * scale * np.einsum("rjvy,uxij,xy,uv->ri", h['bb'][:, hole_b, A, A], t['bb'][pA, pA, :, :], gamma1['b'], gamma1['b'], optimize=True)
     temp = np.einsum("uXiJ,XY,uv->vYiJ", t['ab'][pa, pA, :, :], gamma1['b'], gamma1['a'], optimize=True)
     O['a'][:, hole_a] += scale * np.einsum("vYiJ,rJvY->ri", temp, h['ab'][:, hole_b, a, A], optimize=True)
-    #C1["IR"] += alpha * temp["jIvY"] * H2["vYjR"];
+    O['b'][:, hole_b] += scale * np.einsum("vYjI,jRvY->RI", temp, h['ab'][hole_a, :, a, A], optimize=True)
 
     O['a'][:, hole_a] -= scale * np.einsum("rmvb,ubim,uv->ri", h['aa'][:, c, a, part_a], t['aa'][pa, :, :, hc], gamma1['a'], optimize=True)
     O['a'][:, hole_a] -= scale * np.einsum("rMvB,uBiM,uv->ri", h['ab'][:, C, a, part_b], t['ab'][pa, :, :, hC], gamma1['a'], optimize=True)
     O['a'][:, hole_a] -= scale * np.einsum("rMbV,bUiM,UV->ri", h['ab'][:, C, part_a, A], t['ab'][:, pA, :, hC], gamma1['b'], optimize=True)
-    #C1["IR"] -= alpha * Gamma1_["UV"] * T2["IMUB"] * H2["VBRM"];
-    #C1["IR"] -= alpha * Gamma1_["UV"] * T2["mIbU"] * H2["bVmR"];
-    #C1["IR"] -= alpha * Gamma1_["uv"] * T2["mIuB"] * H2["vBmR"];
+    O['b'][:, hole_b] -= scale * np.einsum("rmvb,ubim,uv->ri", h['bb'][:, C, A, part_b], t['bb'][pA, :, :, hC], gamma1['b'], optimize=True)
+    O['b'][:, hole_b] -= scale * np.einsum("mRbV,bUmI,UV->RI", h['ab'][c, :, part_a, A], t['ab'][:, pA, hc, :], gamma1['b'], optimize=True)
+    O['b'][:, hole_b] -= scale * np.einsum("mRvB,uBmI,uv->RI", h['ab'][c, :, a, part_b], t['ab'][pa, :, hc, :], gamma1['a'], optimize=True)
 
     O['a'][:, hole_a] -= scale * np.einsum("rxvb,ubiy,uv,xy->ri", h['aa'][:, a, a, part_a], t['aa'][pa, :, :, ha], gamma1['a'], gamma1['a'], optimize=True)
     O['a'][:, hole_a] -= scale * np.einsum("rXvB,uBiY,uv,XY->ri", h['ab'][:, A, a, part_b], t['ab'][pa, :, :, hA], gamma1['a'], gamma1['b'], optimize=True)
     O['a'][:, hole_a] -= scale * np.einsum("rXbV,bUiY,UV,XY->ri", h['ab'][:, A, part_a, A], t['ab'][:, pA, :, hA], gamma1['b'], gamma1['b'], optimize=True)
-    #C1["IR"] -= alpha * T2["IYUB"] * Gamma1_["UV"] * Gamma1_["XY"] * H2["VBRX"];
-    #C1["IR"] -= alpha * T2["yIuB"] * Gamma1_["uv"] * Gamma1_["xy"] * H2["vBxR"];
-    #C1["IR"] -= alpha * T2["yIbU"] * Gamma1_["UV"] * Gamma1_["xy"] * H2["bVxR"];
+    O['b'][:, hole_b] -= scale * np.einsum("RXVB,UBIY,UV,XY->RI", h['bb'][:, A, A, part_b], t['bb'][pA, :, :, hA], gamma1['b'], gamma1['b'], optimize=True)
+    O['b'][:, hole_b] -= scale * np.einsum("xRvB,uByI,uv,xy->RI", h['ab'][a, :, a, part_b], t['ab'][pa, :, ha, :], gamma1['a'], gamma1['a'], optimize=True)
+    O['b'][:, hole_b] -= scale * np.einsum("xRbV,bUyI,UV,xy->RI", h['ab'][a, :, part_a, A], t['ab'][:, pA, ha, :], gamma1['b'], gamma1['a'], optimize=True)
 
     O['a'][part_a, :] -= 0.5 * scale * np.einsum("ijpe,aeij->ap", h['aa'][hole_a, hole_a, :, v], t['aa'][:, pv, :, :], optimize=True)
     O['a'][part_a, :] -= scale * np.einsum("iJpE,aEiJ->ap", h['ab'][hole_a, hole_b, :, V], t['ab'][:, pV, :, :], optimize=True)
-    #C1["PA"] -= 0.5 * alpha * H2["PEIJ"] * T2["IJAE"];
-    #C1["PA"] -= alpha * H2["ePiJ"] * T2["iJeA"];
+    O['b'][part_b, :] -= 0.5 * scale * np.einsum("ijpe,aeij->ap", h['bb'][hole_b, hole_b, :, V], t['bb'][:, pV, :, :], optimize=True)
+    O['b'][part_b, :] -= scale * np.einsum("iJeP,eAiJ->AP", h['ab'][hole_a, hole_b, v, :], t['ab'][pv, :, :, :], optimize=True)
 
     O['a'][part_a, :] -= 0.5 * scale * np.einsum("ijpv,auij,uv->ap", h['aa'][hole_a, hole_a, :, a], t['aa'][:, pa, :, :], eta1['a'], optimize=True)
     O['a'][part_a, :] -= scale * np.einsum("iJpV,aUiJ,UV->ap", h['ab'][hole_a, hole_b, :, A], t['ab'][:, pA, :, :], eta1['b'], optimize=True)
-    #C1["PA"] -= 0.5 * alpha * Eta1_["UV"] * T2["IJAU"] * H2["PVIJ"];
-    #C1["PA"] -= alpha * Eta1_["uv"] * T2["iJuA"] * H2["vPiJ"];
+    O['b'][part_b, :] -= 0.5 * scale * np.einsum("ijpv,auij,uv->ap", h['bb'][hole_b, hole_b, :, A], t['bb'][:, pA, :, :], eta1['b'], optimize=True)
+    O['b'][part_b, :] -= scale * np.einsum("iJvP,uAiJ,uv->AP", h['ab'][hole_a, hole_b, a, :], t['ab'][pa, :, :, :], eta1['a'], optimize=True)
 
     O['a'][part_a, :] -= 0.5 * scale * np.einsum("uxpb,abvy,uv,xy->ap", h['aa'][a, a, :, part_a], t['aa'][:, :, ha, ha], eta1['a'], eta1['a'], optimize=True)
-    #C1["PA"] -= 0.5 * alpha * T2["VYAB"] * Eta1_["UV"] * Eta1_["XY"] * H2["PBUX"];
+    O['b'][part_b, :] -= 0.5 * scale * np.einsum("uxpb,abvy,uv,xy->ap", h['bb'][A, A, :, part_b], t['bb'][:, :, hA, hA], eta1['b'], eta1['b'], optimize=True)
     temp = np.einsum("aBvY,uv,XY->aBuX", t['ab'][:, :, ha, hA], eta1['a'], eta1['b'], optimize=True)
     O['a'][part_a, :] -= scale * np.einsum("uXpB,aBuX->ap", h['ab'][a, A, :, part_b], temp, optimize=True)
-    #C1["PA"] -= alpha * H2["bPuX"] * temp["uXbA"];
+    O['b'][part_b, :] -= scale * np.einsum("uXbP,bAuX->AP", h['ab'][a, A, part_a, :], temp, optimize=True)
 
     O['a'][part_a, :] += scale * np.einsum("ujpe,aevj,uv->ap", h['aa'][a, hole_a, :, v], t['aa'][:, pv, ha, :], eta1['a'], optimize=True)
     O['a'][part_a, :] += scale * np.einsum("uJpE,aEvJ,uv->ap", h['ab'][a, hole_b, :, V], t['ab'][:, pV, ha, :], eta1['a'], optimize=True)
     O['a'][part_a, :] += scale * np.einsum("jUpE,aEjV,UV->ap", h['ab'][hole_a, A, :, V], t['ab'][:, pV, :, hA], eta1['b'], optimize=True)
-    #C1["PA"] += alpha * Eta1_["UV"] * T2["VJAE"] * H2["PEUJ"];
-    #C1["PA"] += alpha * Eta1_["uv"] * T2["vJeA"] * H2["ePuJ"];
-    #C1["PA"] += alpha * Eta1_["UV"] * T2["jVeA"] * H2["ePjU"];
+    O['b'][part_b, :] += scale * np.einsum("ujpe,aevj,uv->ap", h['bb'][A, hole_b, :, V], t['bb'][:, pV, hA, :], eta1['b'], optimize=True)
+    O['b'][part_b, :] += scale * np.einsum("uJeP,eAvJ,uv->AP", h['ab'][a, hole_b, v, :], t['ab'][pv, :, ha, :], eta1['a'], optimize=True)
+    O['b'][part_b, :] += scale * np.einsum("jUeP,eAjV,UV->AP", h['ab'][hole_a, A, v, :], t['ab'][pv, :, :, hA], eta1['b'], optimize=True)
 
     O['a'][part_a, :] += scale * np.einsum("ujpy,axvj,uv,xy->ap", h['aa'][a, hole_a, :, a], t['aa'][:, pa, ha, :], eta1['a'], eta1['a'], optimize=True)
     O['a'][part_a, :] += scale * np.einsum("uJpY,aXvJ,uv,XY->ap", h['ab'][a, hole_b, :, A], t['ab'][:, pA, ha, :], eta1['a'], eta1['b'], optimize=True)
     O['a'][part_a, :] += scale * np.einsum("jUpY,aXjV,UV,XY->ap", h['ab'][hole_a, A, :, A], t['ab'][:, pA, :, hA], eta1['b'], eta1['b'], optimize=True)
-    #C1["PA"] += alpha * T2["VJAX"] * Eta1_["UV"] * Eta1_["XY"] * H2["PYUJ"];
-    #C1["PA"] += alpha * T2["vJxA"] * Eta1_["uv"] * Eta1_["xy"] * H2["yPuJ"];
-    #C1["PA"] += alpha * T2["jVxA"] * Eta1_["UV"] * Eta1_["xy"] * H2["yPjU"];
+    O['b'][part_b, :] += scale * np.einsum("ujpy,axvj,uv,xy->ap", h['bb'][A, hole_b, :, A], t['bb'][:, pA, hA, :], eta1['b'], eta1['b'], optimize=True)
+    O['b'][part_b, :] += scale * np.einsum("uJyP,xAvJ,uv,xy->AP", h['ab'][a, hole_b, a, :], t['ab'][pa, :, ha, :], eta1['a'], eta1['a'], optimize=True)
+    O['b'][part_b, :] += scale * np.einsum("jUyP,xAjV,UV,xy->AP", h['ab'][hole_a, A, a, :], t['ab'][pa, :, :, hA], eta1['b'], eta1['a'], optimize=True)
 
     O['a'][:, hole_a] += 0.25 * scale * np.einsum("rjuv,xyuv,xyij->ri", h['aa'][:, hole_a, a, a], lambdas['aa'], t['aa'][pa, pa, :, :], optimize=True) 
-    #C1["IR"] += 0.25 * alpha * T2["IJXY"] * Lambda2_["XYUV"] * H2["UVRJ"];
+    O['b'][:, hole_b] += 0.25 * scale * np.einsum("rjuv,xyuv,xyij->ri", h['bb'][:, hole_b, A, A], lambdas['bb'], t['bb'][pA, pA, :, :], optimize=True) 
     temp = np.einsum("xYuV,xYiJ->uViJ", lambdas['ab'], t['ab'][pa, pA, :, :], optimize=True)
     O['a'][:, hole_a] += scale * np.einsum("rJuV,uViJ->ri", h['ab'][:, hole_b, a, A], temp, optimize=True)
-    #C1["IR"] += alpha * H2["uVjR"] * temp["jIuV"];
+    O['b'][:, hole_b] += scale * np.einsum("jRuV,uVjI->RI", h['ab'][hole_a, :, a, A], temp, optimize=True)
 
     O['a'][part_a, :] -= 0.25 * scale * np.einsum("xypb,abuv,xyuv->ap", h['aa'][a, a, :, part_a], t['aa'][:, :, ha, ha], lambdas['aa'], optimize=True)
-    #C1["PA"] -= 0.25 * alpha * Lambda2_["XYUV"] * T2["UVAB"] * H2["PBXY"];
+    O['b'][part_b, :] -= 0.25 * scale * np.einsum("xypb,abuv,xyuv->ap", h['bb'][A, A, :, part_b], t['bb'][:, :, hA, hA], lambdas['bb'], optimize=True)
     temp = np.einsum("xYuV,aBuV->aBxY", lambdas['ab'], t['ab'][:, :, ha, hA], optimize=True)
     O['a'][part_a, :] -= scale * np.einsum("xYpB,aBxY->ap", h['ab'][a, A, :, part_b], temp, optimize=True)
-    #C1["PA"] -= alpha * H2["bPxY"] * temp["xYbA"];
+    O['b'][part_b, :] -= scale * np.einsum("xYbP,bAxY->AP", h['ab'][a, A, part_a, :], temp, optimize=True)
 
     O['a'][:, hole_a] -= scale * np.einsum("rXuA,yXuV,yAiV->ri", h['ab'][:, A, a, part_b], lambdas['ab'], t['ab'][pa, :, :, hA], optimize=True)
-    #C1["IR"] -= alpha * Lambda2_["xYvU"] * T2["vIaY"] * H2["aUxR"];
+    O['b'][:, hole_b] -= scale * np.einsum("xRaU,xYvU,aYvI->RI", h['ab'][a, :, part_a, A], lambdas['ab'], t['ab'][:, pA, ha, :], optimize=True)
     O['a'][part_a, :] += scale * np.einsum("xIpU,xYvU,aYvI->ap", h['ab'][a, hole_b, :, A], lambdas['ab'], t['ab'][:, pA, ha, :], optimize=True)
-    #C1["PA"] += alpha * Lambda2_["yXuV"] * T2["iVyA"] * H2["uPiX"];
+    O['b'][part_b, :] += scale * np.einsum("iXuP,yXuV,yAiV->AP", h['ab'][hole_a, A, a, :], lambdas['ab'], t['ab'][pa, :, :, hA], optimize=True)
 
     temp = (
             np.einsum("xyuv,ayiv->auix", lambdas['aa'], t['aa'][:, pa, :, ha], optimize=True)
@@ -216,66 +216,70 @@ def h2_t2_c1(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.0)
     )
     O['a'][:, hole_a] += scale * np.einsum("rXaU,aUiX->ri", h['ab'][:, A, part_a, A], temp, optimize=True)
     O['a'][part_a, :] -= scale * np.einsum("iXpU,aUiX->ap", h['ab'][hole_a, A, :, A], temp, optimize=True)
-    #temp["xIuA"] = Lambda2_["xyuv"] * T2["vIyA"];
-    #temp["xIuA"] += Lambda2_["xYuV"] * T2["VIYA"];
-    #C1["IR"] += alpha * temp["xIuA"] * H2["uAxR"];
-    #C1["PA"] -= alpha * H2["uPxI"] * temp["xIuA"];
-    #temp["IXAU"] = Lambda2_["XYUV"] * T2["IVAY"];
-    #temp["IXAU"] += Lambda2_["yXvU"] * T2["vIyA"];
-    #C1["IR"] += alpha * temp["IXAU"] * H2["AURX"];
-    #C1["PA"] -= alpha * H2["PUIX"] * temp["IXAU"];
+    temp = (
+            np.einsum("xyuv,yAvI->uAxI", lambdas['aa'], t['ab'][pa, :, ha, :], optimize=True)
+            + np.einsum("xYuV,AYIV->uAxI", lambdas['ab'], t['bb'][:, pA, :, hA], optimize=True)
+    )
+    O['b'][:, hole_b] += scale * np.einsum("xRuA,uAxI->RI", h['ab'][a, :, a, part_b], temp, optimize=True)
+    O['b'][part_b, :] -= scale * np.einsum("xIuP,uAxI->AP", h['ab'][a, hole_b, a, :], temp, optimize=True)
+    temp = (
+            np.einsum("XYUV,AYIV->AUIX", lambdas['bb'], t['bb'][:, pA, :, hA], optimize=True)
+            + np.einsum("yXvU,yAvI->AUIX", lambdas['ab'], t['ab'][pa, :, ha, :], optimize=True)
+    )
+    O['b'][:, hole_b] += scale * np.einsum("RXAU,AUIX->RI", h['bb'][:, A, part_b, A], temp, optimize=True)
+    O['b'][part_b, :] -= scale * np.einsum("IXPU,AUIX->AP", h['bb'][hole_b, A, :, A], temp, optimize=True)
 
     temp = (
             0.5 * np.einsum("xyav,xyuv->ua",h['aa'][a, a, part_a, a], lambdas['aa'], optimize=True)
             + np.einsum("xYaV,xYuV->ua", h['ab'][a, A, part_a, A], lambdas['ab'], optimize=True)
     )
     O['a'][part_a, hole_a] += scale * np.einsum("ua,abuj->bj", temp, t['aa'][:, :, ha, :], optimize=True)
-    #C1["JB"] += alpha * temp["au"] * T2["uJaB"];
+    O['b'][part_b, hole_b] += scale * np.einsum("ua,aBuJ->BJ", temp, t['ab'][:, :, ha, :], optimize=True)
     temp = (
             0.5 * np.einsum("XYAV,XYUV->UA", h['bb'][A, A, part_b, A], lambdas['bb'], optimize=True)
             + np.einsum("xYvA,xYvU->UA", h['ab'][a, A, a, part_b], lambdas['ab'], optimize=True)
     )
     O['a'][part_a, hole_a] += scale * np.einsum("bAjU,UA->bj", t['ab'][:, :, :, hA], temp, optimize=True)
-    #C1["JB"] += alpha * temp["AU"] * T2["UJAB"];
+    O['b'][part_b, hole_b] += scale * np.einsum("ABUJ,UA->BJ", t['bb'][:, :, hA, :], temp, optimize=True)
 
     temp = (
             0.5 * np.einsum("iyuv,xyuv->ix", h['aa'][hole_a, a, a, a], lambdas['aa'], optimize=True)
             + np.einsum("iYuV,xYuV->ix", h['ab'][hole_a, A, a, A], lambdas['ab'], optimize=True)
     )
     O['a'][part_a, hole_a] -= scale * np.einsum("xbij,ix->bj", t['aa'][pa, :, :, :], temp, optimize=True)
-    #C1["JB"] -= alpha * temp["xi"] * T2["iJxB"];
+    O['b'][part_b, hole_b] -= scale * np.einsum("xBiJ,ix->BJ", t['ab'][pa, :, :, :], temp, optimize=True)
     temp = (
             0.5 * np.einsum("iyuv,xyuv->ix", h['bb'][hole_b, A, A, A], lambdas['bb'], optimize=True)
             + np.einsum("yIvU,yXvU->IX", h['ab'][a, hole_b, a, A], lambdas['ab'], optimize=True)
     )
     O['a'][part_a, hole_a] -= scale * np.einsum("bXjI,IX->bj", t['ab'][:, pA, :, :], temp, optimize=True)
-    #C1["JB"] -= alpha * temp["XI"] * T2["IJXB"];
+    O['b'][part_b, hole_b] -= scale * np.einsum("XBIJ,IX->BJ", t['bb'][pA, :, :, :], temp, optimize=True)
 
     temp = (
             0.5 * np.einsum("xyuv,eyuv->ex", lambdas['aa'], t['aa'][pv, pa, ha, ha], optimize=True)
             + np.einsum("xYuV,eYuV->ex", lambdas['ab'], t['ab'][pv, pA, ha, hA], optimize=True)
     )
     O['a'] += scale * np.einsum("xseq,ex->sq", h['aa'][a, :, v, :], temp, optimize=True)
-    #C1["QS"] += alpha * temp["xe"] * H2["eQxS"];
+    O['b'] += scale * np.einsum("xSeQ,ex->SQ", h['ab'][a, :, v, :], temp, optimize=True)
     temp = (
             0.5 * np.einsum("XYUV,EYUV->EX", lambdas['bb'], t['bb'][pV, pA, hA, hA], optimize=True)
             + np.einsum("yXuV,yEuV->EX", lambdas['ab'], t['ab'][pa, pV, ha, hA], optimize=True)
     )
     O['a'] += scale * np.einsum("sXqE,EX->sq", h['ab'][:, A, :, V], temp, optimize=True)
-    #C1["QS"] += alpha * temp["XE"] * H2["EQXS"];
+    O['b'] += scale * np.einsum("XSEQ,EX->SQ", h['bb'][A, :, V, :], temp, optimize=True)
 
     temp = (
             0.5 * np.einsum("xyuv,xymv->um", lambdas['aa'], t['aa'][pa, pa, hc, ha], optimize=True)
             + np.einsum("xYuV,xYmV->um", lambdas['ab'], t['ab'][pa, pA, hc, hA], optimize=True)
     )
     O['a'] -= scale * np.einsum("msuq,um->sq", h['aa'][c, :, a, :], temp, optimize=True)
-    #C1["QS"] -= alpha * temp["mu"] * H2["uQmS"];
+    O['b'] -= scale * np.einsum("mSuQ,um->SQ", h['ab'][c, :, a, :], temp, optimize=True)
     temp = (
             0.5 * np.einsum("XYUV,XYMV->UM", lambdas['bb'], t['bb'][pA, pA, hC, hA], optimize=True)
             + np.einsum("xYvU,xYvM->UM", lambdas['ab'], t['ab'][pa, pA, ha, hC], optimize=True)
     )
     O['a'] -= scale * np.einsum("sMqU,UM->sq", h['ab'][:, C, :, A], temp, optimize=True)
-    #C1["QS"] -= alpha * temp["MU"] * H2["UQMS"];
+    O['b'] -= scale * np.einsum("MSUQ,UM->SQ", h['bb'][C, :, A, :], temp, optimize=True)
     return O
 
 def h1_t2_c2(O, h, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1.0):

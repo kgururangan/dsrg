@@ -422,12 +422,12 @@ class DSRG:
             # o = h1a_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             # o = h2c_t1b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             # o = h2b_t1a_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2c_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2c_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2b_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2b_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2b_t2a_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2a_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h2c_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h2c_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h2b_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h2b_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h2b_t2a_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h2a_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             #print(f"c1b took {time.time() - _t0}")
             ### twobody
             # c2a
@@ -460,7 +460,7 @@ class DSRG:
             # OPTIMIZED UPDATES #
             #####################
             # 0-body
-            o = h_t_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # o = h_t_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             # 1-body
             o = h1_t1_c1(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h1_t2_c1(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
