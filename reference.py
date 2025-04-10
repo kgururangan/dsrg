@@ -4,7 +4,9 @@ from pyscf_tools import make_casci_rdm123s, make_casci_rdm123
 
 class Reference:
     
-    def __init__(self, mc, mf, nfrozen=0, verbose=False):
+    def __init__(self, mc, mf, mo_coeff=None, nfrozen=0, verbose=False):
+        if nfrozen != 0:
+            print("   >>>WARNING: nfrozen DOESN'T WORK IN REFERENCE YET <<<")
         self.mc = mc
         self.mf = mf
         self.nfrozen = nfrozen
@@ -19,6 +21,11 @@ class Reference:
         self.nact_beta = self.cas[1]
         self.nvirt_alpha = self.norb - self.nact_alpha - self.ncore_alpha
         self.nvirt_beta = self.norb - self.nact_beta - self.ncore_beta
+        #
+        if mo_coeff is None:
+            self.mo_coeff = self.mf.mo_coeff
+        else:
+            self.mo_coeff = mo_coeff
         #
         self.nhole_alpha = self.ncore_alpha + self.nact_alpha
         self.nhole_beta = self.ncore_beta + self.nact_beta
@@ -191,15 +198,14 @@ class Reference:
                         'aaa': lam3aaa, 'aab': lam3aab, 'abb': lam3abb, 'bbb': lam3bbb}
         
     def make_hf_integrals(self):
-        mo_coeff = self.mf.mo_coeff
 
         # Note: You cannot replace this the T + V construction with mf.get_hcore() when using
         # a CASCI calculation in conjunction with mf!
         hcore_ao = self.mf.mol.intor_symmetric('int1e_kin') + self.mf.mol.intor_symmetric('int1e_nuc')
-        hcore = np.einsum('pi,pq,qj->ij', mo_coeff, hcore_ao, mo_coeff)
+        hcore = np.einsum('pi,pq,qj->ij', self.mo_coeff, hcore_ao, self.mo_coeff)
         
         eri = self.mf.mol.intor("int2e_sph", aosym="s1").transpose(0, 2, 1, 3)
-        eri = np.einsum("ijkl,ip,jq,kr,ls->pqrs", eri, mo_coeff, mo_coeff, mo_coeff, mo_coeff, optimize=True)
+        eri = np.einsum("ijkl,ip,jq,kr,ls->pqrs", eri, self.mo_coeff, self.mo_coeff, self.mo_coeff, self.mo_coeff, optimize=True)
         
         eri_aa = eri - eri.transpose(0, 1, 3, 2)
         eri_ab = eri.copy()
@@ -456,11 +462,25 @@ class SpinReference:
         lam2 -= lam2.transpose(1, 0, 2, 3)
         lam2 += self.rdms['2']
 
+        # Make 3-body cumulants
+        # l(abcijk) = g(abcijk) - A(a/bc)A(i/jk) g(ai)g(bcjk) + 2*A(ijk) g(ai)g(bj)g(ck)
+        lam3 = self.rdms['3'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['1'], self.rdms['2'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) + np.transpose(temp, (2, 1, 0, 3, 4, 5)) # (a/bc)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3 -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['1'], self.rdms['1'], self.rdms['1'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3 += 2.0 * temp
+
         self.gam1 = gam1
         self.eta1 = eta1
         self.gam1_full = gam1_full
         self.eta1_full = eta1_full
-        self.lambdas = {'2': lam2}
+        self.lambdas = {'2': lam2, '3': lam3}
+        print("|lam2| = ", np.linalg.norm(lam2.flatten()))
+        print("|lam3| = ", np.linalg.norm(lam3.flatten()))
         
     def make_hf_integrals(self):
         mo_coeff = self.mf.mo_coeff
