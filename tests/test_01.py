@@ -6,7 +6,7 @@ from dsrg.dsrg_si import DSRG
 RTOL = 1.0e-06
 ATOL = 1.0e-06
 
-def mrdsrg_ldsrg2_1():
+def test_mrdsrg_ldsrg2_1():
 
     mol = gto.M(
         atom = '''
@@ -49,5 +49,5 @@ def mrdsrg_ldsrg2_1():
     assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -109.100877299246179, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
-    mrdsrg_ldsrg2_1()
+    test_mrdsrg_ldsrg2_1()
 

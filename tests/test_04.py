@@ -7,7 +7,7 @@ VERBOSE = 0
 RTOL = 1.0e-06
 ATOL = 1.0e-06
 
-if __name__ == "__main__":
+def test_mrdsrg_ldsrg2_hf():
 
     mol = gto.M(atom='''H 0 0 0; F 0 0 1.5''', 
                 spin=0, 
@@ -52,3 +52,5 @@ if __name__ == "__main__":
     assert np.isclose(driver.e_dsrg2, -0.124514912932, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -100.0260675, rtol=RTOL, atol=ATOL)
 
+if __name__ == "__main__":
+    test_mrdsrg_ldsrg2_hf()
