@@ -26,7 +26,7 @@ setup(
     description=short_description,
     long_description=long_description,
     long_description_content_type="text/markdown",
-    version='0.0.1',
+    version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
     license='BSD-3-Clause',
 
