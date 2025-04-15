@@ -1,0 +1,31 @@
+Original:
+---------	
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('uv,uAaB,bv->bAaB', eta1['a'], h['ab'][a,V,v,V], t['a'][pv,ha], optimize=True) [1]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('uv,uAaB,bv->bAaB', gamma1['a'], h['ab'][a,V,v,V], t['a'][pv,ha], optimize=True) [2]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('iAaB,bi->bAaB', h['ab'][c,V,v,V], t['a'][pv,hc], optimize=True) [3]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('UV,aUbA,BV->aBbA', eta1['b'], h['ab'][v,A,v,V], t['b'][pV,hA], optimize=True) [4]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('UV,aUbA,BV->aBbA', gamma1['b'], h['ab'][v,A,v,V], t['b'][pV,hA], optimize=True) [5]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('aIbA,BI->aBbA', h['ab'][v,C,v,V], t['b'][pV,hC], optimize=True) [6]
+
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('UV,uv,uUaA,bBvV->bBaA', eta1['b'], eta1['a'], h['ab'][a,A,v,V], t['ab'][pv,pV,ha,hA], optimize=True) [7]
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('uv,uIaA,bBvI->bBaA', gamma1['a'], h['ab'][a,C,v,V], t['ab'][pv,pV,ha,hC], optimize=True) [8]
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('UV,uv,uUaA,bBvV->bBaA', gamma1['b'], gamma1['a'], h['ab'][a,A,v,V], t['ab'][pv,pV,ha,hA], optimize=True) [9]
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('UV,iUaA,bBiV->bBaA', gamma1['b'], h['ab'][c,A,v,V], t['ab'][pv,pV,hc,hA], optimize=True) [10]
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('iIaA,bBiI->bBaA', h['ab'][c,C,v,V], t['ab'][pv,pV,hc,hC], optimize=True) [11]
+
+Optimized:
+----------
+# O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('uAaB,bu->bAaB', h['ab'][a,V,v,V], t['a'][pv,ha], optimize=True) [1+2]
+# O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('iAaB,bi->bAaB', h['ab'][c,V,v,V], t['a'][pv,hc], optimize=True) [3]
+# O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('aUbA,BU->aBbA', h['ab'][v,A,v,V], t['b'][pV,hA], optimize=True) [4+5]
+# O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('aIbA,BI->aBbA', h['ab'][v,C,v,V], t['b'][pV,hC], optimize=True) [6]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('iAaB,bi->bAaB', h['ab'][hole_alpha,V,v,V], t['a'][pv,:], optimize=True) [1+2+3]
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('aIbA,BI->aBbA', h['ab'][v,hole_beta,v,V], t['b'][pV,:], optimize=True) [4+5+6]
+
+O['ab'][v,V,v,V] += scale * -1.00000000 * np.einsum('UV,uv,uUaA,bBvV->bBaA', eta1['b'], eta1['a'], h['ab'][a,A,v,V], t['ab'][pv,pV,ha,hA], optimize=True) [7]
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('UV,uv,uUaA,bBvV->bBaA', gamma1['b'], gamma1['a'], h['ab'][a,A,v,V], t['ab'][pv,pV,ha,hA], optimize=True) [9]
+
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('uv,uIaA,bBvI->bBaA', gamma1['a'], h['ab'][a,C,v,V], t['ab'][pv,pV,ha,hC], optimize=True) [8]
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('UV,iUaA,bBiV->bBaA', gamma1['b'], h['ab'][c,A,v,V], t['ab'][pv,pV,hc,hA], optimize=True) [10]
+
+O['ab'][v,V,v,V] += scale * +1.00000000 * np.einsum('iIaA,bBiI->bBaA', h['ab'][c,C,v,V], t['ab'][pv,pV,hc,hC], optimize=True) [11]

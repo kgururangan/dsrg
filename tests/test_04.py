@@ -1,24 +1,17 @@
-import sys, os
-# Get the current file's directory
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# Get the parent directory
-parent_dir = os.path.dirname(current_dir)
-# Add the parent directory to sys.path
-sys.path.append(parent_dir)
-
 import numpy as np
 from pyscf import gto, scf, mcscf, fci
-from reference import Reference
-from dsrg import DSRG
+from dsrg.reference import Reference
+from dsrg.dsrg_si import DSRG
 
 VERBOSE = 0
-RTOL = 1.0e-07
+RTOL = 1.0e-06
+ATOL = 1.0e-06
 
 if __name__ == "__main__":
 
     mol = gto.M(atom='''H 0 0 0; F 0 0 1.5''', 
                 spin=0, 
-                basis='cc-pvtz', 
+                basis='6-31g', 
                 unit='angstrom', 
                 verbose=VERBOSE, 
                 symmetry="C2v"
@@ -49,4 +42,13 @@ if __name__ == "__main__":
 
     driver = DSRG(ref)
     driver.run_ldsrg2(s=2.0, herm=True)
+
+    #
+    # Check the results
+    # Source: MR-LDSRG(2) Results from 4c-DSRG-MRPT (Brian's code)
+    # (includes 3-cumulant in energy)
+    #
+    assert np.isclose(driver.ref.e_cas, -99.9015526, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.e_dsrg2, -0.124514912932, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -100.0260675, rtol=RTOL, atol=ATOL)
 

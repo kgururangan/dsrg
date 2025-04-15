@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from pyscf_tools import make_casci_rdm123s, make_casci_rdm123
+from dsrg.pyscf_tools import make_casci_rdm123s, make_casci_rdm123
 
 class Reference:
     
@@ -76,6 +76,7 @@ class Reference:
         # semi-canonicalize integrals and RDMs
         if semi:
             tic = time.time()
+            self.get_semicanonicalizer()
             self.semicanonicalize()
             toc = time.time()
             if self.verbose: print(f"Semicanonicalize integrals and RDMs... {toc - tic}s")
@@ -235,13 +236,17 @@ class Reference:
                     + np.einsum("upvq,uv->pq", self.V['ab'][a, :, a, :], self.rdms['a'])
         )
         self.F = {'a': fock_a, 'b': fock_b}
+        #fock = np.einsum("pi,pq,qj->ij", self.mc.mo_coeff, self.mc.get_fock(), self.mc.mo_coeff)
+        #self.F = {'a': fock, 'b': fock}
         
     def get_semicanonicalizer(self):
 
         def _diagonalize_and_reorder(f):
-            e, u = np.linalg.eig(f)
-            isort = np.argsort(e)
-            return u[:, isort]
+            #e, u = np.linalg.eig(f)
+            #isort = np.argsort(e)
+            #return u[:, isort].copy()
+            e, u = np.linalg.eigh(f)
+            return u
 
         # diagonalize fock_a and fock_b in cc, aa, and vv sectors to get alpha and beta semicanonicalizers
         c = self.orbspace['core_alpha']
@@ -254,17 +259,16 @@ class Reference:
         self.U = {'a': np.zeros_like(self.F['a']), 'b': np.zeros_like(self.F['b'])}
         for ispin, f in self.F.items():
             if ispin == 'a':
-                self.U[ispin][c, c] = _diagonalize_and_reorder(f[c, c])
-                self.U[ispin][a, a] = _diagonalize_and_reorder(f[a, a])
-                self.U[ispin][v, v] = _diagonalize_and_reorder(f[v, v])
+                self.U[ispin][c, c] = _diagonalize_and_reorder(f[c, c].copy())
+                self.U[ispin][a, a] = _diagonalize_and_reorder(f[a, a].copy())
+                self.U[ispin][v, v] = _diagonalize_and_reorder(f[v, v].copy())
             if ispin == 'b':
-                self.U[ispin][C, C] = _diagonalize_and_reorder(f[C, C])
-                self.U[ispin][A, A] = _diagonalize_and_reorder(f[A, A])
-                self.U[ispin][V, V] = _diagonalize_and_reorder(f[V, V])
+                self.U[ispin][C, C] = _diagonalize_and_reorder(f[C, C].copy())
+                self.U[ispin][A, A] = _diagonalize_and_reorder(f[A, A].copy())
+                self.U[ispin][V, V] = _diagonalize_and_reorder(f[V, V].copy())
+        self.U['b'] = self.U['a'].copy()
         
-    
     def semicanonicalize(self):
-        self.get_semicanonicalizer()
         def _rotate_1(U, F):
             return np.einsum("ij,ip,jq->pq", F, np.conj(U), U, optimize=True)
         def _rotate_2s(U, V):
@@ -280,23 +284,29 @@ class Reference:
         a = self.orbspace['active_alpha']
         A = self.orbspace['active_beta']
         # semi-canonicalize 1- and 2-body integrals
-        self.Z['a'] = _rotate_1(self.U['a'], self.Z['a'])
-        self.Z['b'] = _rotate_1(self.U['b'], self.Z['b'])
-        self.F['a'] = _rotate_1(self.U['a'], self.F['a'])
-        self.F['b'] = _rotate_1(self.U['b'], self.F['b'])
-        self.V['aa'] = _rotate_2s(self.U['a'], self.V['aa'])
-        self.V['ab'] = _rotate_2(self.U['a'], self.U['b'], self.V['ab'])
-        self.V['bb'] = _rotate_2s(self.U['b'], self.V['bb'])
+        self.Z['a'] = _rotate_1(self.U['a'], self.Z['a'].copy())
+        self.Z['b'] = _rotate_1(self.U['b'], self.Z['b'].copy())
+        self.F['a'] = _rotate_1(self.U['a'], self.F['a'].copy())
+        self.F['b'] = _rotate_1(self.U['b'], self.F['b'].copy())
+        self.V['aa'] = _rotate_2s(self.U['a'], self.V['aa'].copy())
+        self.V['ab'] = _rotate_2(self.U['a'], self.U['b'], self.V['ab'].copy())
+        self.V['bb'] = _rotate_2s(self.U['b'], self.V['bb'].copy())
+        #m = np.einsum("ip,ui->up", self.U['a'], self.mf.mo_coeff)
+        #self.F['a'] = np.einsum("up,uv,vq->pq", m, self.mc.get_fock(), m, optimize=True)
+        #self.F['b'] = np.einsum("up,uv,vq->pq", m, self.mc.get_fock(), m, optimize=True)
+        #self.V['aa'] = np.einsum("up,vq,xr,ys,uvxy->pqrs", m, m, m, m, self.V['aa'], optimize=True)
+        #self.V['ab'] = np.einsum("up,vq,xr,ys,uvxy->pqrs", m, m, m, m, self.V['ab'], optimize=True)
+        #self.V['bb'] = np.einsum("up,vq,xr,ys,uvxy->pqrs", m, m, m, m, self.V['bb'], optimize=True)
         # semi-canonicalize 1-, 2-, and 3-body RDMs
-        self.rdms['a'] = _rotate_1(self.U['a'][a, a], self.rdms['a'])
-        self.rdms['b'] = _rotate_1(self.U['b'][A, A], self.rdms['b'])
-        self.rdms['aa'] = _rotate_2s(self.U['a'][a, a], self.rdms['aa'])
-        self.rdms['ab'] = _rotate_2(self.U['a'][a, a], self.U['b'][A, A], self.rdms['ab'])
-        self.rdms['bb'] = _rotate_2s(self.U['b'][A, A], self.rdms['bb'])
-        self.rdms['aaa'] = _rotate_3s(self.U['a'][a, a], self.rdms['aaa'])
-        self.rdms['aab'] = _rotate_3b(self.U['a'][a, a], self.U['b'][A, A], self.rdms['aab'])
-        self.rdms['abb'] = _rotate_3c(self.U['a'][a, a], self.U['b'][A, A], self.rdms['abb'])
-        self.rdms['bbb'] = _rotate_3s(self.U['b'][A, A], self.rdms['bbb'])
+        self.rdms['a'] = _rotate_1(self.U['a'][a, a], self.rdms['a'].copy())
+        self.rdms['b'] = _rotate_1(self.U['b'][A, A], self.rdms['b'].copy())
+        self.rdms['aa'] = _rotate_2s(self.U['a'][a, a], self.rdms['aa'].copy())
+        self.rdms['ab'] = _rotate_2(self.U['a'][a, a], self.U['b'][A, A], self.rdms['ab'].copy())
+        self.rdms['bb'] = _rotate_2s(self.U['b'][A, A], self.rdms['bb'].copy())
+        self.rdms['aaa'] = _rotate_3s(self.U['a'][a, a], self.rdms['aaa'].copy())
+        self.rdms['aab'] = _rotate_3b(self.U['a'][a, a], self.U['b'][A, A], self.rdms['aab'].copy())
+        self.rdms['abb'] = _rotate_3c(self.U['a'][a, a], self.U['b'][A, A], self.rdms['abb'].copy())
+        self.rdms['bbb'] = _rotate_3s(self.U['b'][A, A], self.rdms['bbb'].copy())
 
     def compute_cas_energy(self):
         c = self.orbspace['core_alpha']
@@ -518,9 +528,11 @@ class SpinReference:
     def get_semicanonicalizer(self):
 
         def _diagonalize_and_reorder(f):
+            #e, u = np.linalg.eigh(f)
+            #isort = np.argsort(e)
+            #return u[:, isort]
             e, u = np.linalg.eigh(f)
-            isort = np.argsort(e)
-            return u[:, isort]
+            return u 
 
         # diagonalize fock_a and fock_b in cc, aa, and vv sectors to get semicanonicalizer
         c = self.orbspace['core']

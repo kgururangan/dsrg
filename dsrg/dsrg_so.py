@@ -1,7 +1,7 @@
 import time
 import numpy as np
-from utilities import get_memory_usage
-from spinorbital_contractions import *
+from dsrg.utilities import get_memory_usage
+from dsrg.spinorbital_contractions import *
 
 def spatial_index(p):
     if p % 2 == 0:
@@ -166,6 +166,9 @@ class SpinDSRG:
         hc = self.ref.orbspace['hole_core']
         pa = self.ref.orbspace['particle_active']
         pv = self.ref.orbspace['particle_virt']
+        # [WARNING]: Set 3-cumulant to 0
+        print("  WARNING: Setting 3-cumulant to 0!")
+        self.ref.lambdas['3'] *= 0.
 
         # Form 1- and 2-body (regularized) energy denominators
         self.form_denominators(s)

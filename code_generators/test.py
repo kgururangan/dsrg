@@ -266,85 +266,85 @@ if __name__ == "__main__":
     temp = []
     for i in itertools.product(['v+', 'a+'],['a', 'c']):
         temp.append(' '.join(i))
-    t1a = w.op('t', temp, unique=True)
+    t1a = w.op('t', temp, unique=False)
     # t1b
     temp = []
     for i in itertools.product(['V+', 'A+'],['A', 'C']):
         temp.append(' '.join(i))
-    t1b = w.op("t", temp, unique=True)
+    t1b = w.op("t", temp, unique=False)
 
     # t2a
     temp = []
     for i in itertools.product(['v+', 'a+'],['v+', 'a+'], ['a', 'c'], ['a', 'c']):
         temp.append(' '.join(i))
-    t2a = w.op('t', temp, unique=True)
+    t2a = w.op('t', temp, unique=False)
     # t2c
     temp = []
     for i in itertools.product(['V+', 'A+'],['V+', 'A+'], ['A', 'C'], ['A', 'C']):
         temp.append(' '.join(i))
-    t2c = w.op('t', temp, unique=True)
+    t2c = w.op('t', temp, unique=False)
     # t2b
     temp = []
     for i in itertools.product(['v+', 'a+'],['V+', 'A+'], ['a', 'c'], ['A', 'C']):
         temp.append(' '.join(i))
-    t2b = w.op("t", temp, unique=True)
+    t2b = w.op("t", temp, unique=False)
 
     # t3a
     temp = []
     for i in itertools.product(['v+', 'a+'],['v+', 'a+'], ['v+', 'a+'], ['a', 'c'], ['a', 'c'], ['a', 'c']):
         temp.append(' '.join(i))
-    t3a = w.op('t', temp, unique=True)
+    t3a = w.op('t', temp, unique=False)
     # t3b
     temp = []
     for i in itertools.product(['v+', 'a+'],['v+', 'a+'], ['V+', 'A+'], ['a', 'c'], ['a', 'c'], ['A', 'C']):
         temp.append(' '.join(i))
-    t3b = w.op('t', temp, unique=True)
+    t3b = w.op('t', temp, unique=False)
     # t3c
     temp = []
     for i in itertools.product(['v+', 'a+'],['V+', 'A+'], ['V+', 'A+'], ['a', 'c'], ['A', 'C'], ['A', 'C']):
         temp.append(' '.join(i))
-    t3c = w.op('t', temp, unique=True)
+    t3c = w.op('t', temp, unique=False)
     # t3d
     temp = []
     for i in itertools.product(['V+', 'A+'],['V+', 'A+'], ['V+', 'A+'], ['A', 'C'], ['A', 'C'], ['A', 'C']):
         temp.append(' '.join(i))
-    t3d = w.op('t', temp, unique=True)
+    t3d = w.op('t', temp, unique=False)
 
     # h1a
     temp = []
     for i in itertools.product(['v+', 'a+', 'c+'],['v', 'a', 'c']):
         temp.append(' '.join(i))
-    h1a = w.op('h', temp, unique=True)
+    h1a = w.op('h', temp, unique=False)
     # h1b
     temp = []
     for i in itertools.product(['V+', 'A+', 'C+'],['V', 'A', 'C']):
         temp.append(' '.join(i))
-    h1b = w.op('h', temp, unique=True)
+    h1b = w.op('h', temp, unique=False)
 
     # h2a
     temp = []
     for i in itertools.product(['v+', 'a+', 'c+'],['v+', 'a+', 'c+'], ['v', 'a', 'c'], ['v', 'a', 'c']):
         temp.append(' '.join(i))
-    h2a = w.op('h', temp, unique=True)
+    h2a = w.op('h', temp, unique=False)
     # h2c
     temp = []
     for i in itertools.product(['V+', 'A+', 'C+'],['V+', 'A+', 'C+'], ['V', 'A', 'C'], ['V', 'A', 'C']):
         temp.append(' '.join(i))
-    h2c = w.op('h', temp, unique=True)
+    h2c = w.op('h', temp, unique=False)
     # h2b
     temp = []
     for i in itertools.product(['v+', 'a+', 'c+'],['V+', 'A+', 'C+'], ['v', 'a', 'c'], ['V', 'A', 'C']):
         temp.append(' '.join(i))
-    h2b = w.op("h", temp, unique=True)
+    h2b = w.op("h", temp, unique=False)
 
     fmt = 'slice'
 
     H = [h1a, h1b, h2a, h2b, h2c]
-    T = [t1a, t1b, t2a, t2b, t2c, t3a, t3b, t3c, t3d]
+    T = [t1a, t1b, t2a, t2b, t2c]
 
-    output = ['c0', 'c1a', 'c1b', 'c2a', 'c2b', 'c2c', 'c3a', 'c3b', 'c3c', 'c3d']
+    output = ['c0', 'c1a', 'c1b', 'c2a', 'c2b', 'c2c']
     interaction = ['h1a', 'h1b', 'h2a', 'h2b', 'h2c']
-    cluster = ['t1a', 't1b', 't2a', 't2b', 't2c', 't3a', 't3b', 't3c', 't3d']
+    cluster = ['t1a', 't1b', 't2a', 't2b', 't2c']
 
     input_dict = {}
     for o in output:

@@ -82,7 +82,7 @@ def h2_t2_c0(O, Hbar, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1
     t1, t2 = t # Unpack cluster operator
     h1, h2 = Hbar # Unpack Hamiltonian
     lambda2 = lambdas['2'] # 2-cumulant
-    # lambda3 = lambdas['3'] # 3-cumulant
+    lambda3 = lambdas['3'] # 3-cumulant
     O += scale * +0.50000000 * np.einsum('uv,wx,yz,iyvx,uwiz->', eta1, eta1, gamma1, h2[c,a,a,a], t2[pa,pa,hc,ha], optimize=True)
     O += scale * +0.25000000 * np.einsum('uv,wx,ijvx,uwij->', eta1, eta1, h2[c,c,a,a], t2[pa,pa,hc,hc], optimize=True)
     O += scale * +0.50000000 * np.einsum('uv,wx,yz,wyva,uaxz->', eta1, gamma1, gamma1, h2[a,a,a,v], t2[pa,pv,ha,ha], optimize=True)
@@ -96,9 +96,9 @@ def h2_t2_c0(O, Hbar, t, gamma1, eta1, lambdas, orbspace, verbose=False, scale=1
     O += scale * +1.00000000 * np.einsum('uv,uwxa,wyxz,yavz->', gamma1, h2[a,a,a,v], lambda2, t2[pa,pv,ha,ha], optimize=True)
     O += scale * +0.12500000 * np.einsum('ijuv,wxuv,wxij->', h2[c,c,a,a], lambda2, t2[pa,pa,hc,hc], optimize=True)
     O += scale * +0.25000000 * np.einsum('ijab,abij->', h2[c,c,v,v], t2[pv,pv,hc,hc], optimize=True)
-    # O += scale * +0.25000000 * np.einsum('iuvw,uxyvwz,xyiz->', h2[c,a,a,a], lambda3, t2[pa,pa,hc,ha], optimize=True)
+    O += scale * +0.25000000 * np.einsum('iuvw,uxyvwz,xyiz->', h2[c,a,a,a], lambda3, t2[pa,pa,hc,ha], optimize=True)
     O += scale * +1.00000000 * np.einsum('iuva,uwvx,waix->', h2[c,a,a,v], lambda2, t2[pa,pv,hc,ha], optimize=True)
-    # O += scale * -0.25000000 * np.einsum('uvwa,uvxwyz,xayz->', h2[a,a,a,v], lambda3, t2[pa,pv,ha,ha], optimize=True)
+    O += scale * -0.25000000 * np.einsum('uvwa,uvxwyz,xayz->', h2[a,a,a,v], lambda3, t2[pa,pv,ha,ha], optimize=True)
     O += scale * +0.12500000 * np.einsum('uvab,uvwx,abwx->', h2[a,a,v,v], lambda2, t2[pv,pv,ha,ha], optimize=True)
 
     t1 = time.time()

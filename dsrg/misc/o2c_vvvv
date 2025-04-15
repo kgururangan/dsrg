@@ -1,0 +1,7 @@
+	O['bb'][V,V,V,V] += scale * +0.50000000 * np.einsum('UV,UABC,DV->ADBC', eta1['b'], h['bb'][A,V,V,V], t['b'][pV,hA], optimize=True)
+	O['bb'][V,V,V,V] += scale * +0.50000000 * np.einsum('UV,UABC,DV->ADBC', gamma1['b'], h['bb'][A,V,V,V], t['b'][pV,hA], optimize=True)
+	O['bb'][V,V,V,V] += scale * +0.50000000 * np.einsum('IABC,DI->ADBC', h['bb'][C,V,V,V], t['b'][pV,hC], optimize=True)
+	O['bb'][V,V,V,V] += scale * -0.12500000 * np.einsum('UV,WX,UWAB,CDVX->CDAB', eta1['b'], eta1['b'], h['bb'][A,A,V,V], t['bb'][pV,pV,hA,hA], optimize=True)
+	O['bb'][V,V,V,V] += scale * +0.12500000 * np.einsum('UV,WX,UWAB,CDVX->CDAB', gamma1['b'], gamma1['b'], h['bb'][A,A,V,V], t['bb'][pV,pV,hA,hA], optimize=True)
+	O['bb'][V,V,V,V] += scale * +0.25000000 * np.einsum('UV,IUAB,CDIV->CDAB', gamma1['b'], h['bb'][C,A,V,V], t['bb'][pV,pV,hC,hA], optimize=True)
+	O['bb'][V,V,V,V] += scale * +0.12500000 * np.einsum('IJAB,CDIJ->CDAB', h['bb'][C,C,V,V], t['bb'][pV,pV,hC,hC], optimize=True)
