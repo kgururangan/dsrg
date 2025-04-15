@@ -1,7 +1,7 @@
 import numpy as np
 from pyscf import gto, scf, mcscf, fci
 from dsrg.reference import SpinReference
-from dsrg.dsrg_spinorb import SpinDSRG
+from dsrg.dsrg_so import SpinDSRG
 
 VERBOSE = 0
 RTOL = 1.0e-06
