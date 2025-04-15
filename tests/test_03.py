@@ -50,5 +50,5 @@ def test_mrdsrg_ldsrg2_nh_1():
     assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -109.250624592284794, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
-    test_mrdsrg_ldsrg_nh_1()
+    test_mrdsrg_ldsrg2_nh_1()
 

@@ -40,12 +40,11 @@ def test_mrdsrg_ldsrg2_n2():
 
     #
     # Check the results
-    # Source: MR-LDSRG(2) Results from Forte 
-    # (includes 3-cumulant in energy)
+    # (neglects 3-cumulant in energy)
     #
     assert np.isclose(driver.ref.e_cas, -108.947010693494292, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2, -0.153866605751881, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -109.100877299246179, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.e_dsrg2, -0.154495244660, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -109.101505933875, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
     test_mrdsrg_ldsrg2_n2()

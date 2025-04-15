@@ -1,5 +1,5 @@
 import numpy as np
-from pyscf import gto, scf, mcscf, fci
+from pyscf import gto, scf, mcscf
 from dsrg.reference import SpinReference
 from dsrg.dsrg_so import SpinDSRG
 
@@ -46,9 +46,10 @@ def test_mrdsrg_ldsrg2_hf():
     #
     # Check the results
     # Source: MR-LDSRG(2) Results from 4c-DSRG-MRPT (Brian's code)
-    # (excludes 3-cumulant in energy)
+    # (neglects 3-cumulant in energy)
     #
     assert np.isclose(ref.e_cas, -99.9015526, rtol=RTOL, atol=ATOL)
+    assert np.isclose(ref.e_dsrg2, -0.124561571625, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.e_dsrg2 + ref.e_cas, -100.026114187584, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":

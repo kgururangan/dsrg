@@ -860,10 +860,6 @@ class DSRG3:
                 'aa': self.ref.V['aa'].copy(),
                 'ab': self.ref.V['ab'].copy(),
                 'bb': self.ref.V['bb'].copy(),
-                'aaa': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'aab': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
         }
 
         o_old = {
@@ -873,10 +869,6 @@ class DSRG3:
                 'aa': self.ref.V['aa'].copy(),
                 'ab': self.ref.V['ab'].copy(),
                 'bb': self.ref.V['bb'].copy(),
-                'aaa': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'aab': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
         }
         for key in o.keys():
             o[key] *= 0.0
