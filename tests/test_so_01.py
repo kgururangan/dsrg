@@ -49,7 +49,7 @@ def test_mrdsrg_ldsrg2_hf():
     # (neglects 3-cumulant in energy)
     #
     assert np.isclose(ref.e_cas, -99.9015526, rtol=RTOL, atol=ATOL)
-    assert np.isclose(ref.e_dsrg2, -0.124561571625, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.e_dsrg2, -0.124561571625, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.e_dsrg2 + ref.e_cas, -100.026114187584, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
