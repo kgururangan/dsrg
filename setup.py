@@ -4,6 +4,7 @@ A small Python package for multireference coupled-cluster calculations
 """
 import sys
 from setuptools import setup, find_packages
+import versioneer
 
 short_description = "A small Python package for multireference coupled-cluster calculations".split("\n")[0]
 
