@@ -1,32 +1,9 @@
 import time
 import numpy as np
-from dsrg.utilities import get_memory_usage
-from dsrg.contractions_mrldsrg3 import *
+from dsrg.utilities import get_memory_usage, spin_label, spatial_index, regularized_denominator
+from dsrg.mrldsrg3_contractions import *
 
-USE_OPT = True
-
-def spatial_index(p):
-    if p % 2 == 0:
-        return int(p / 2)
-    else:
-        return int((p + 1) / 2)
-
-def spin_label(p):
-    if p % 2 == 0:
-        return "B"
-    else:
-        return "A"
-
-def regularized_denominator(x, s):
-    '''Compute the denomiator factor [1 - exp(s*x^2)]/x. For small
-    values of s*x^2, apply Taylor expansion of exp(s*x^2). This allows
-    one to recover the s -> infty limit.'''
-    z = np.sqrt(s) * x
-    if abs(z) <= 1.0e-09:
-        return np.sqrt(s)*(z - z**3/2 + z**5/6)
-    return (1. - np.exp(-s * x**2)) / x
-
-class DSRG3:
+class DSRG:
 
     def __init__(self, ref, print_threshold=0.09):
         self.ref = ref
@@ -88,12 +65,12 @@ class DSRG3:
                             for c in range(npart_alpha):
                                 self.d3aaa[a, b, c, i, j, k] = (eps_a[i] + eps_a[j] + eps_a[k] 
                                                                 - eps_a[a + self.ref.ncore_alpha] - eps_a[b + self.ref.ncore_alpha] - eps_a[c + self.ref.ncore_alpha])
-                                self.regdenom3aaa[a, b, c, i, j, k] = regularized_denomator(self.d3aaa[a, b, c, i, j, k], s)
+                                self.regdenom3aaa[a, b, c, i, j, k] = regularized_denominator(self.d3aaa[a, b, c, i, j, k], s)
                         for k in range(nhole_beta):
                             for c in range(npart_beta):
                                 self.d3aab[a, b, c, i, j, k] = (eps_a[i] + eps_a[j] + eps_b[k] 
                                                                 - eps_a[a + self.ref.ncore_alpha] - eps_a[b + self.ref.ncore_alpha] - eps_b[c + self.ref.ncore_beta])
-                                self.regdenom3aab[a, b, c, i, j, k] = regularized_denomator(self.d3aab[a, b, c, i, j, k], s)
+                                self.regdenom3aab[a, b, c, i, j, k] = regularized_denominator(self.d3aab[a, b, c, i, j, k], s)
         for j in range(nhole_alpha):
             for b in range(npart_alpha):
                 for k in range(nhole_alpha):
@@ -102,12 +79,12 @@ class DSRG3:
                             for a in range(npart_alpha):
                                 self.d3abb[a, b, c, i, j, k] = (eps_a[i] + eps_b[j] + eps_b[k] 
                                                                 - eps_a[a + self.ref.ncore_alpha] - eps_b[b + self.ref.ncore_beta] - eps_b[c + self.ref.ncore_beta])
-                                self.regdenom3abb[a, b, c, i, j, k] = regularized_denomator(self.d3abb[a, b, c, i, j, k], s)
+                                self.regdenom3abb[a, b, c, i, j, k] = regularized_denominator(self.d3abb[a, b, c, i, j, k], s)
                         for i in range(nhole_beta):
                             for a in range(npart_beta):
                                 self.d3bbb[a, b, c, i, j, k] = (eps_b[i] + eps_b[j] + eps_b[k] 
                                                                 - eps_b[a + self.ref.ncore_alpha] - eps_b[b + self.ref.ncore_alpha] - eps_b[c + self.ref.ncore_beta])
-                                self.regdenom3bbb[a, b, c, i, j, k] = regularized_denomator(self.d3bbb[a, b, c, i, j, k], s)
+                                self.regdenom3bbb[a, b, c, i, j, k] = regularized_denominator(self.d3bbb[a, b, c, i, j, k], s)
 
     def run_ldsrg3(self, s, maxiter=80, herm=True, conv=1.0e-07, max_ncomm=12):
         print("    ==> MR-LDSRG(3) Amplitude Equations <==")
@@ -130,14 +107,16 @@ class DSRG3:
         pA = self.ref.orbspace['particle_active_beta']
         pV = self.ref.orbspace['particle_virt_beta']
 
-        norb = self.ref.F.shape[0]
+        norb = self.ref.F['a'].shape[0]
 
         # Form 1- and 2-body (regularized) energy denominators
+        tic = time.time()
         self.form_denominators(s)
+        toc = time.time()
+        print(f'form n-body regularized denominators   ... : {toc - tic}s')
 
         # 1st-order t1, t2 amplitudes
         tic = time.time()
-        nua, nub, noa, nob = self.T['ab'].shape
         self.T = {}
         self.T['aa'] = self.ref.V['aa'][p, p, h, h] * self.regdenom2aa
         self.T['ab'] = self.ref.V['ab'][p, p, h, h] * self.regdenom2ab
@@ -160,14 +139,15 @@ class DSRG3:
         self.T['b'] *= self.regdenom1b
         self.T['b'][pA, hA] *= 0.
 
-        self.T['aaa'] = np.zeros(nua, nua, nua, noa, noa, noa)
-        self.T['aab'] = np.zeros(nua, nua, nub, noa, noa, nob)
-        self.T['abb'] = np.zeros(nua, nub, nub, noa, nob, nob)
-        self.T['bbb'] = np.zeros(nub, nub, nub, nob, nob, nob)
+        nua, nub, noa, nob = self.T['ab'].shape
+        self.T['aaa'] = np.zeros((nua, nua, nua, noa, noa, noa))
+        self.T['aab'] = np.zeros((nua, nua, nub, noa, noa, nob))
+        self.T['abb'] = np.zeros((nua, nub, nub, noa, nob, nob))
+        self.T['bbb'] = np.zeros((nub, nub, nub, nob, nob, nob))
         toc = time.time()
         print(f'   ... compute first-order amplitudes: {toc - tic}s')
 
-        print(f'   ... allocating Hbar arrays')
+        tic = time.time()
         self.hbar = {
                 '0': 0.0,
                 'a': self.ref.F['a'].copy(),
@@ -192,6 +172,8 @@ class DSRG3:
                 'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
                 'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
         }
+        toc = time.time()
+        print(f'   ... allocate HBar arrays: {toc - tic}s')
 
         #
         # LDSRG(3) iterations
@@ -264,10 +246,10 @@ class DSRG3:
                 'aa': self.ref.V['aa'].copy(),
                 'ab': self.ref.V['ab'].copy(),
                 'bb': self.ref.V['bb'].copy(),
-                'aaa': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'aab': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
+                'aaa': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                'aab': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                'abb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                'bbb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
         }
 
         o_old = {
@@ -277,10 +259,10 @@ class DSRG3:
                 'aa': self.ref.V['aa'].copy(),
                 'ab': self.ref.V['ab'].copy(),
                 'bb': self.ref.V['bb'].copy(),
-                'aaa': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'aab': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
-                'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
+                'aaa': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                'aab': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                'abb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                'bbb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
         }
         for key in o.keys():
             o[key] *= 0.0
@@ -290,6 +272,16 @@ class DSRG3:
             o['0'] = 0.0
             # 0-body (energy)
             _t0 = time.time()
+            o = h1a_t1a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1b_t1b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1a_t2a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1a_t2b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1b_t2b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1b_t2c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2a_t1a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2b_t1a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2b_t1b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2c_t1b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2a_t2a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2a_t2b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2b_t2a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
@@ -297,21 +289,151 @@ class DSRG3:
             o = h2b_t2c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2c_t2b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2c_t2c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
-            o = h_t_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
-            # print(f"time for zerobody {time.time() - _t0}")
-            # 1-body
+            o = h1a_t3a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1a_t3b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1a_t3c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1b_t3b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1b_t3c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h1b_t3d_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2a_t3a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2a_t3b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2a_t3c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2b_t3a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2b_t3b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2b_t3c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2b_t3d_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2c_t3b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2c_t3c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            o = h2c_t3d_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
+            # print(f"energy took {time.time() - _t0}")
+            ### onebody
+            # c1a
             _t0 = time.time()
-            o = h1_t1_c1(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h1_t2_c1(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2_t1_c1(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2_t2_c1(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            # print(f"time for onebody {time.time() - _t0}")
-            # 2-body
+            o = h1a_t1a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t2a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t2b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t1a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t1b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t2a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t2b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2c_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3c_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3c_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3d_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3c_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # print(f"c1a took {time.time() - _t0}")
+            # c1b
             _t0 = time.time()
-            o = h1_t2_c2(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2_t1_c2(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            o = h2_t2_c2(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t1b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t1b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t1a_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2a_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3d_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3a_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3d_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3d_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # print(f"c1b took {time.time() - _t0}")
+            ### twobody
+            # c2a
+            _t0 = time.time()
+            o = h1a_t2a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t1a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t2a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # print(f"c2a took {time.time() - _t0}")
+            # c2b
+            _t0 = time.time()
+            o = h1a_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t1a_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t1b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2a_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2c_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3c_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3c_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3a_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3d_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3c_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            # print(f"c2b took {time.time() - _t0}")
+            # c2c
+            _t0 = time.time()
+            o = h1b_t2c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t1b_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3d_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3d_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3d_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             # 3-body
+            o = h1a_t3a_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3a_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3a_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1a_t3c_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3c_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t3c_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3b_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3d_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3c_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h1b_t3d_c3d(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t3c_c3d(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t3d_c3d(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
 
             # print(f"time for twobody {time.time() - _t0}")
             # antisymmetrize
