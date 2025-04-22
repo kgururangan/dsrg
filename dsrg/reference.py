@@ -5,8 +5,6 @@ from dsrg.pyscf_tools import make_casci_rdm123s, make_casci_rdm123
 class Reference:
     
     def __init__(self, mc, mf, mo_coeff=None, nfrozen=0, verbose=False):
-        if nfrozen != 0:
-            print("   >>>WARNING: nfrozen DOESN'T WORK IN REFERENCE YET <<<")
         self.mc = mc
         self.mf = mf
         self.nfrozen = nfrozen
@@ -89,6 +87,10 @@ class Reference:
         self.compute_cas_energy()
         #
         self.compute_cas_energy_from_fock()
+        #
+        self.freeze_orbitals()
+        if self.verbose: print(f"Freezing {self.nfrozen} doubly occupied orbitals for correlated treatment...")
+        #
         if self.verbose:
             print("CAS (from RDMs) = ", self.e_cas)
             print("CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
@@ -369,6 +371,43 @@ class Reference:
         #+ 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], self.lambdas['bb'])
         #+ self.nuclear_repulsion
         self.e_cas_from_fock = e_test
+
+    def freeze_orbitals(self):
+        self.nelectron -= 2*self.nfrozen
+        self.norb -= self.nfrozen
+        self.ncore_alpha -= self.nfrozen 
+        self.ncore_beta -= self.nfrozen 
+        #
+        self.nhole_alpha = self.ncore_alpha + self.nact_alpha
+        self.nhole_beta = self.ncore_beta + self.nact_beta
+        #
+        self.orbspace = {
+            'core_alpha': slice(0, self.ncore_alpha),
+            'active_alpha': slice(self.ncore_alpha, self.ncore_alpha + self.nact_alpha),
+            'virt_alpha': slice(self.ncore_alpha + self.nact_alpha, self.norb),
+            'core_beta': slice(0, self.ncore_beta),
+            'active_beta': slice(self.ncore_beta, self.ncore_beta + self.nact_beta),
+            'virt_beta': slice(self.ncore_beta + self.nact_beta, self.norb),
+            'hole_core_alpha': slice(0, self.ncore_alpha),
+            'hole_active_alpha': slice(self.ncore_alpha, self.ncore_alpha + self.nact_alpha),
+            'particle_active_alpha': slice(0, self.nact_alpha),
+            'particle_virt_alpha': slice(self.nact_alpha, self.nact_alpha + self.nvirt_alpha),
+            'hole_core_beta': slice(0, self.ncore_beta),
+            'hole_active_beta': slice(self.ncore_beta, self.ncore_beta + self.nact_beta),
+            'particle_active_beta': slice(0, self.nact_beta),
+            'particle_virt_beta': slice(self.nact_beta, self.nact_beta + self.nvirt_beta),
+            'hole_alpha': slice(0, self.ncore_alpha + self.nact_alpha),
+            'particle_alpha': slice(self.ncore_alpha, self.norb),
+            'hole_beta': slice(0, self.ncore_beta + self.nact_beta),
+            'particle_beta': slice(self.ncore_beta, self.norb),
+        }
+        #
+        corr = slice(self.nfrozen, self.norb + self.nfrozen)
+        self.F['a'] = self.F['a'][corr, corr]
+        self.F['b'] = self.F['b'][corr, corr]
+        self.V['aa'] = self.V['aa'][corr, corr, corr, corr]
+        self.V['ab'] = self.V['ab'][corr, corr, corr, corr]
+        self.V['bb'] = self.V['bb'][corr, corr, corr, corr]
 
 class SpinReference:
     

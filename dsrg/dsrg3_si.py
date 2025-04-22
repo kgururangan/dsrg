@@ -159,6 +159,10 @@ class DSRG:
                 'aab': np.zeros((norb, norb, norb, norb, norb, norb)),
                 'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
                 'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
+                #'aaa': np.zeros((nua, nua, nua, noa, noa, noa)),
+                #'aab': np.zeros((nua, nua, nub, noa, noa, nob)),
+                #'abb': np.zeros((nua, nub, nub, noa, nob, nob)),
+                #'bbb': np.zeros((nub, nub, nub, nob, nob, nob)),
         }
         o = { 
                 '0': 0.0,
@@ -171,6 +175,10 @@ class DSRG:
                 'aab': np.zeros((norb, norb, norb, norb, norb, norb)),
                 'abb': np.zeros((norb, norb, norb, norb, norb, norb)),
                 'bbb': np.zeros((norb, norb, norb, norb, norb, norb)),
+                #'aaa': np.zeros((nua, nua, nua, noa, noa, noa)),
+                #'aab': np.zeros((nua, nua, nub, noa, noa, nob)),
+                #'abb': np.zeros((nua, nub, nub, noa, nob, nob)),
+                #'bbb': np.zeros((nub, nub, nub, nob, nob, nob)),
         }
         toc = time.time()
         print(f'   ... allocate HBar arrays: {toc - tic}s')
@@ -210,12 +218,16 @@ class DSRG:
             self.T['bb'] = (self.hbar['bb'][P, P, h, H] + self.T['bb'] * self.d2bb) * self.regdenom2bb
             self.T['bb'][pA, pA, hA, hA] = .0
             self.T['aaa'] = (self.hbar['aaa'][p, p, p, h, h, h] + self.T['aaa'] * self.d3aaa) * self.regdenom3aaa
+            #self.T['aaa'] = (self.hbar['aaa'] + self.T['aaa'] * self.d3aaa) * self.regdenom3aaa
             self.T['aaa'][pa, pa, pa, ha, ha, ha] = .0
             self.T['aab'] = (self.hbar['aab'][p, p, P, h, h, H] + self.T['aab'] * self.d3aab) * self.regdenom3aab
+            #self.T['aab'] = (self.hbar['aab'] + self.T['aab'] * self.d3aab) * self.regdenom3aab
             self.T['aab'][pa, pa, pA, ha, ha, hA] = .0
             self.T['abb'] = (self.hbar['abb'][p, P, P, h, H, H] + self.T['abb'] * self.d3abb) * self.regdenom3abb
+            #self.T['abb'] = (self.hbar['abb'] + self.T['abb'] * self.d3abb) * self.regdenom3abb
             self.T['abb'][pa, pA, pA, ha, hA, hA] = .0
             self.T['bbb'] = (self.hbar['bbb'][P, P, P, H, H, H] + self.T['bbb'] * self.d3bbb) * self.regdenom3bbb
+            #self.T['bbb'] = (self.hbar['bbb'] + self.T['bbb'] * self.d3bbb) * self.regdenom3bbb
             self.T['bbb'][pA, pA, pA, hA, hA, hA] = .0
             # Update iteration counter
             it += 1
@@ -239,6 +251,7 @@ class DSRG:
         print("")
 
     def compute_hbar(self, o, max_ncomm, herm, verbose=False):
+        nua, nub, noa, nob = self.T['ab'].shape
         self.hbar = {
                 '0': 0.0,
                 'a': self.ref.F['a'].copy(),
@@ -250,6 +263,10 @@ class DSRG:
                 'aab': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
                 'abb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
                 'bbb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                #'aaa': np.zeros((nua, nua, nua, noa, noa, noa)),
+                #'aab': np.zeros((nua, nua, nub, noa, noa, nob)),
+                #'abb': np.zeros((nua, nub, nub, noa, nob, nob)),
+                #'bbb': np.zeros((nub, nub, nub, nob, nob, nob)),
         }
 
         o_old = {
@@ -263,6 +280,10 @@ class DSRG:
                 'aab': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
                 'abb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
                 'bbb': np.zeros((self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb, self.ref.norb)),
+                #'aaa': np.zeros((nua, nua, nua, noa, noa, noa)),
+                #'aab': np.zeros((nua, nua, nub, noa, noa, nob)),
+                #'abb': np.zeros((nua, nub, nub, noa, nob, nob)),
+                #'bbb': np.zeros((nub, nub, nub, nob, nob, nob)),
         }
         for key in o.keys():
             o[key] *= 0.0
@@ -271,7 +292,6 @@ class DSRG:
         while ncomm < max_ncomm:
             o['0'] = 0.0
             # 0-body (energy)
-            _t0 = time.time()
             o = h1a_t1a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h1b_t1b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h1a_t2a_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
@@ -305,10 +325,7 @@ class DSRG:
             o = h2c_t3b_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2c_t3c_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
             o = h2c_t3d_c0(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace, scale=2.0 if herm else 1.0)
-            # print(f"energy took {time.time() - _t0}")
             ### onebody
-            # c1a
-            _t0 = time.time()
             o = h1a_t1a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h1a_t2a_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h1b_t2b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
@@ -333,9 +350,6 @@ class DSRG:
             o = h2b_t3d_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3b_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3c_c1a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            # print(f"c1a took {time.time() - _t0}")
-            # c1b
-            _t0 = time.time()
             o = h1b_t1b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h1b_t2c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h1a_t2b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
@@ -360,10 +374,7 @@ class DSRG:
             o = h2c_t3b_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3c_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3d_c1b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            # print(f"c1b took {time.time() - _t0}")
             ### twobody
-            # c2a
-            _t0 = time.time()
             o = h1a_t2a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2a_t1a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2a_t2a_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
@@ -376,9 +387,6 @@ class DSRG:
             o = h2b_t3b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2b_t3c_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3b_c2a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            # print(f"c2a took {time.time() - _t0}")
-            # c2b
-            _t0 = time.time()
             o = h1a_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h1b_t2b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2b_t1a_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
@@ -398,9 +406,6 @@ class DSRG:
             o = h2b_t3d_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3b_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3c_c2b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
-            # print(f"c2b took {time.time() - _t0}")
-            # c2c
-            _t0 = time.time()
             o = h1b_t2c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t1b_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t2c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
@@ -414,6 +419,15 @@ class DSRG:
             o = h2c_t3c_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3d_c2c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             # 3-body
+            o = h2a_t2a_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2a_t2b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2a_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c3b(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2b_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2b_t2c_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2b_c3c(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            o = h2c_t2c_c3d(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
+            #
             o = h1a_t3a_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2a_t3a_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2b_t3b_c3a(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
@@ -435,7 +449,6 @@ class DSRG:
             o = h2b_t3c_c3d(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
             o = h2c_t3d_c3d(o, o_old, self.T, self.ref.gam1, self.ref.eta1, self.ref.lambdas, self.ref.orbspace)
 
-            # print(f"time for twobody {time.time() - _t0}")
             # antisymmetrize
             o['aa'] -= o['aa'].transpose(1, 0, 2, 3)
             o['aa'] -= o['aa'].transpose(0, 1, 3, 2)
@@ -457,6 +470,7 @@ class DSRG:
             o['bbb'] -= o['bbb'].transpose(1, 0, 2, 3, 4, 5) + o['bbb'].transpose(2, 1, 0, 3, 4, 5) # (a/bc)
             o['bbb'] -= o['bbb'].transpose(0, 1, 2, 3, 5, 4) # (jk)
             o['bbb'] -= o['bbb'].transpose(0, 1, 2, 4, 3, 5) + o['bbb'].transpose(0, 1, 2, 5, 4, 3) # (i/jk)
+
             if herm: 
                 o['a'] += o['a'].T.conj()
                 o['b'] += o['b'].T.conj()
@@ -467,15 +481,19 @@ class DSRG:
                 o['aab'] += o['aab'].transpose(3, 4, 5, 0, 1, 2)
                 o['abb'] += o['abb'].transpose(3, 4, 5, 0, 1, 2)
                 o['bbb'] += o['bbb'].transpose(3, 4, 5, 0, 1, 2)
+
+            # Increment commutator count
             ncomm += 1
+
             for key, value in o.items():
                 o[key] /= ncomm
-            residual_op = np.sqrt((o['a']**2).sum() + (o['b']**2).sum()
-                                + (o['aa']**2).sum() + (o['ab']**2).sum() + (o['bb']**2).sum()
-                                + (o['aaa']**2).sum() + (o['aab']**2).sum() + (o['abb']**2).sum() + (o['bbb']**2).sum()
-                                )
+
+            res1 = np.linalg.norm(o['a'].flatten() + o['b'].flatten())
+            res2 = np.linalg.norm(o['aa'].flatten() + o['ab'].flatten() + o['bb'].flatten())
+            res3 = np.linalg.norm(o['aaa'].flatten() + o['aab'].flatten() + o['abb'].flatten() + o['bbb'].flatten())
+            residual_op = res1 + res2 + res3
             if verbose:
-                print(f"    {ncomm}   |C| = {residual_op}")
+                print(f"    {ncomm}   |C| = {residual_op}   |c1| = {res1}   |c2| = {res2}   |c3| = {res3}")
             if residual_op < 1e-12: 
                 break
             # Increment many-body components of Hbar
