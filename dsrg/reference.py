@@ -409,6 +409,330 @@ class Reference:
         self.V['ab'] = self.V['ab'][corr, corr, corr, corr]
         self.V['bb'] = self.V['bb'][corr, corr, corr, corr]
 
+class FakeReference:
+    
+    def __init__(self, mf, nfrozen=0, verbose=False):
+        self.mf = mf
+        self.nfrozen = nfrozen
+        self.nelectron = mf.mol.nelectron
+        self.norb = mf.mo_coeff.shape[1]
+        self.nuclear_repulsion = self.mf.mol.energy_nuc()
+        self.ncore_alpha = self.nelectron // 2
+        self.ncore_beta = self.nelectron // 2
+        self.nact_alpha = 0
+        self.nact_beta = 0
+        self.nvirt_alpha = self.norb - self.nact_alpha - self.ncore_alpha
+        self.nvirt_beta = self.norb - self.nact_beta - self.ncore_beta
+        #
+        self.mo_coeff = self.mf.mo_coeff
+        #
+        self.nhole_alpha = self.ncore_alpha + self.nact_alpha
+        self.nhole_beta = self.ncore_beta + self.nact_beta
+        self.npart_alpha = self.nact_alpha + self.nvirt_alpha
+        self.npart_beta = self.nact_beta + self.nvirt_beta
+        #
+        self.orbspace = {
+            'core_alpha': slice(0, self.ncore_alpha),
+            'active_alpha': slice(self.ncore_alpha, self.ncore_alpha + self.nact_alpha),
+            'virt_alpha': slice(self.ncore_alpha + self.nact_alpha, self.norb),
+            'core_beta': slice(0, self.ncore_beta),
+            'active_beta': slice(self.ncore_beta, self.ncore_beta + self.nact_beta),
+            'virt_beta': slice(self.ncore_beta + self.nact_beta, self.norb),
+            'hole_core_alpha': slice(0, self.ncore_alpha),
+            'hole_active_alpha': slice(self.ncore_alpha, self.ncore_alpha + self.nact_alpha),
+            'particle_active_alpha': slice(0, self.nact_alpha),
+            'particle_virt_alpha': slice(self.nact_alpha, self.nact_alpha + self.nvirt_alpha),
+            'hole_core_beta': slice(0, self.ncore_beta),
+            'hole_active_beta': slice(self.ncore_beta, self.ncore_beta + self.nact_beta),
+            'particle_active_beta': slice(0, self.nact_beta),
+            'particle_virt_beta': slice(self.nact_beta, self.nact_beta + self.nvirt_beta),
+            'hole_alpha': slice(0, self.ncore_alpha + self.nact_alpha),
+            'particle_alpha': slice(self.ncore_alpha, self.norb),
+            'hole_beta': slice(0, self.ncore_beta + self.nact_beta),
+            'particle_beta': slice(self.ncore_beta, self.norb),
+        }
+        #
+        self.verbose = verbose
+
+    def kernel(self, semi=True):
+        if self.verbose: print("Spin-Integrated CAS Reference")
+        if self.verbose: print(f"Semicanonicalization = {semi}")
+        # first make the hcore/V integrals in HF basis
+        tic = time.time()
+        self.make_hf_integrals()
+        toc = time.time()
+        if self.verbose: print(f"HF integral construction... {toc - tic}s")
+        # get RDMs from CAS wave function
+        tic = time.time()
+        self.rdms = {}
+        self.rdms['a'] = np.zeros(shape=(0, 0))
+        self.rdms['b'] = np.zeros(shape=(0, 0))
+        self.rdms['aa'] = np.zeros(shape=(0, 0, 0, 0))
+        self.rdms['ab'] = np.zeros(shape=(0, 0, 0, 0))
+        self.rdms['bb'] = np.zeros(shape=(0, 0, 0, 0))
+        self.rdms['aaa'] = np.zeros(shape=(0, 0, 0, 0, 0, 0))
+        self.rdms['aab'] = np.zeros(shape=(0, 0, 0, 0, 0, 0))
+        self.rdms['abb'] = np.zeros(shape=(0, 0, 0, 0, 0, 0))
+        self.rdms['bbb'] = np.zeros(shape=(0, 0, 0, 0, 0, 0))
+        #self.make_rdms()
+        toc = time.time()
+        if self.verbose: print(f"RDM construction... {toc - tic}s")
+        # make generalized Fock operator
+        tic = time.time()
+        self.make_fock()
+        toc = time.time()
+        if self.verbose: print(f"Fock construction... {toc - tic}s")
+        # semi-canonicalize integrals and RDMs
+        if semi:
+            pass
+        # make cumulants from RDMs
+        tic = time.time()
+        self.make_cumulants()
+        toc = time.time()
+        if self.verbose: print(f"Make cumulants... {toc - tic}s")
+        # check that 1- and 2-RDMs in semicanonical basis is correct by computing CAS energy
+        self.compute_cas_energy()
+        #
+        self.compute_cas_energy_from_fock()
+        #
+        self.freeze_orbitals()
+        if self.verbose: print(f"Freezing {self.nfrozen} doubly occupied orbitals for correlated treatment...")
+        #
+        if self.verbose:
+            print("CAS (from RDMs) = ", self.e_cas)
+            print("CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
+            print("Expected CAS = ", self.mf.e_tot)
+        try:
+            assert np.allclose(self.e_cas, self.mf.e_tot)
+            assert np.allclose(self.e_cas_from_fock, self.mf.e_tot)
+            if self.verbose: print("All is well!")
+        except AssertionError:
+            print("CAS energy computed via RDMs does not match!")
+        
+    def make_hf_integrals(self):
+
+        # Note: You cannot replace this the T + V construction with mf.get_hcore() when using
+        # a CASCI calculation in conjunction with mf!
+        hcore_ao = self.mf.mol.intor_symmetric('int1e_kin') + self.mf.mol.intor_symmetric('int1e_nuc')
+        hcore = np.einsum('pi,pq,qj->ij', self.mo_coeff, hcore_ao, self.mo_coeff)
+        
+        eri = self.mf.mol.intor("int2e_sph", aosym="s1").transpose(0, 2, 1, 3)
+        eri = np.einsum("ijkl,ip,jq,kr,ls->pqrs", eri, self.mo_coeff, self.mo_coeff, self.mo_coeff, self.mo_coeff, optimize=True)
+        
+        eri_aa = eri - eri.transpose(0, 1, 3, 2)
+        eri_ab = eri.copy()
+        eri_bb = eri - eri.transpose(0, 1, 3, 2)
+        
+        self.Z = {'a': hcore, 'b': hcore}
+        self.V = {'aa': eri_aa, 'ab': eri_ab, 'bb': eri_bb}
+
+    def make_cumulants(self):
+
+        # Make 1-body cumulants
+        gam1a = self.rdms['a'].copy()
+        eta1a = np.eye(gam1a.shape[0]) - gam1a
+        gam1b = self.rdms['b'].copy()
+        eta1b = np.eye(gam1b.shape[0]) - gam1b
+
+        # Make full 1-body cumulants (just in case)
+        c = self.orbspace['core_alpha']
+        C = self.orbspace['core_beta']
+        a = self.orbspace['active_alpha']
+        A = self.orbspace['active_beta']
+        v = self.orbspace['virt_alpha']
+        V = self.orbspace['virt_beta']
+        #
+        gam1a_full = np.zeros((self.norb, self.norb))
+        gam1a_full[c, c] = np.eye(self.ncore_alpha)
+        gam1a_full[a, a] = gam1a.copy()
+        #
+        gam1b_full = np.zeros((self.norb, self.norb))
+        gam1b_full[C, C] = np.eye(self.ncore_beta)
+        gam1b_full[A, A] = gam1b.copy()
+        #
+        eta1a_full = np.zeros((self.norb, self.norb))
+        eta1a_full[a, a] = eta1a.copy()
+        eta1a_full[v, v] = np.eye(self.nvirt_alpha)
+        #
+        eta1b_full = np.zeros((self.norb, self.norb)) 
+        eta1b_full[A, A] = eta1b.copy()
+        eta1b_full[V, V] = np.eye(self.nvirt_beta)
+
+        # Make 2-body cumulants
+        lam2aa = -np.einsum("uw,vx->uvwx", gam1a, gam1a, optimize=True)
+        lam2aa -= lam2aa.transpose(1, 0, 2, 3)
+        lam2aa += self.rdms['aa']
+        #
+        lam2ab = -np.einsum("uw,vx->uvwx", gam1a, gam1b, optimize=True)
+        lam2ab += self.rdms['ab']
+        #
+        lam2bb = -np.einsum("uw,vx->uvwx", gam1b, gam1b, optimize=True)
+        lam2bb -= lam2bb.transpose(1, 0, 2, 3)
+        lam2bb += self.rdms['bb']
+
+        # Make 3-body cumulants
+        # l(abcijk) = g(abcijk) - A(a/bc)A(i/jk) g(ai)g(bcjk) + 2*A(ijk) g(ai)g(bj)g(ck)
+        lam3aaa = self.rdms['aaa'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['a'], self.rdms['aa'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) + np.transpose(temp, (2, 1, 0, 3, 4, 5)) # (a/bc)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3aaa -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['a'], self.rdms['a'], self.rdms['a'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3aaa += 2.0 * temp
+        # l(abc~ijk~) = g(abc~ijk~) - A(ab)A(ij) g(ai)g(bc~jk~) - g(c~k~)g(abij) + 2*A(ij) g(ai)g(bj)g(c~k~)
+        lam3aab = self.rdms['aab'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['a'], self.rdms['ab'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) # (ab)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) # (ij)
+        lam3aab -= temp
+        temp = np.einsum("ck,abij->abcijk", self.rdms['b'], self.rdms['aa'], optimize=True)
+        lam3aab -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['a'], self.rdms['a'], self.rdms['b'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) # (ij)
+        lam3aab += 2.0 * temp
+        # l(ab~c~ij~k~) = g(ab~c~ij~k~) - g(ai)g(b~c~j~k~) - A(bc)A(jk) g(b~j~)g(ac~ik~) + 2*A(jk) g(ai)g(b~j~)g(c~k~)
+        lam3abb = self.rdms['abb'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['a'], self.rdms['bb'], optimize=True)
+        lam3abb -= temp
+        temp = np.einsum("bj,acik->abcijk", self.rdms['b'], self.rdms['ab'], optimize=True)
+        temp -= np.transpose(temp, (0, 2, 1, 3, 4, 5)) # (bc)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        lam3abb -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['a'], self.rdms['b'], self.rdms['b'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        lam3abb += 2.0 * temp
+        # l(a~b~c~i~j~k~) = g(a~b~c~i~j~k~) - A(a/bc)A(i/jk) g(a~i~)g(b~c~j~k~) + 2*A(ijk) g(a~i~)g(b~j~)g(c~k~)
+        lam3bbb = self.rdms['bbb'].copy()
+        temp = np.einsum("ai,bcjk->abcijk", self.rdms['b'], self.rdms['bb'], optimize=True)
+        temp -= np.transpose(temp, (1, 0, 2, 3, 4, 5)) + np.transpose(temp, (2, 1, 0, 3, 4, 5)) # (a/bc)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3bbb -= temp
+        temp = np.einsum("ai,bj,ck->abcijk", self.rdms['b'], self.rdms['b'], self.rdms['b'], optimize=True)
+        temp -= np.transpose(temp, (0, 1, 2, 3, 5, 4)) # (jk)
+        temp -= np.transpose(temp, (0, 1, 2, 4, 3, 5)) + np.transpose(temp, (0, 1, 2, 5, 4, 3)) # (i/jk)
+        lam3bbb += 2.0 * temp
+
+        self.gam1 = {'a': gam1a, 'b': gam1b}
+        self.gam1_full = {'a': gam1a_full, 'b': gam1b_full}
+        self.eta1 = {'a': eta1a, 'b': eta1b}
+        self.eta1_full = {'a': eta1a_full, 'b': eta1b_full}
+        self.lambdas = {'aa': lam2aa, 'ab': lam2ab, 'bb': lam2bb,
+                        'aaa': lam3aaa, 'aab': lam3aab, 'abb': lam3abb, 'bbb': lam3bbb}
+        
+    def make_fock(self):
+        c = self.orbspace['core_alpha']
+        C = self.orbspace['core_beta']
+        a = self.orbspace['active_alpha']
+        A = self.orbspace['active_beta']
+        
+        fock_a = (
+                    self.Z['a'] 
+                    + np.einsum("piqi->pq", self.V['aa'][:, c, :, c])
+                    + np.einsum("puqv,uv->pq", self.V['aa'][:, a, :, a], self.rdms['a'])
+                    + np.einsum("piqi->pq", self.V['ab'][:, C, :, C])
+                    + np.einsum("puqv,uv->pq", self.V['ab'][:, A, :, A], self.rdms['b'])
+        )
+        fock_b = (
+                    self.Z['b'] 
+                    + np.einsum("piqi->pq", self.V['bb'][:, C, :, C])
+                    + np.einsum("puqv,uv->pq", self.V['bb'][:, A, :, A], self.rdms['b'])
+                    + np.einsum("ipiq->pq", self.V['ab'][c, :, c, :])
+                    + np.einsum("upvq,uv->pq", self.V['ab'][a, :, a, :], self.rdms['a'])
+        )
+        self.F = {'a': fock_a, 'b': fock_b}
+        #fock = np.einsum("pi,pq,qj->ij", self.mc.mo_coeff, self.mc.get_fock(), self.mc.mo_coeff)
+        #self.F = {'a': fock, 'b': fock}
+
+    def compute_cas_energy(self):
+        c = self.orbspace['core_alpha']
+        C = self.orbspace['core_beta']
+        a = self.orbspace['active_alpha']
+        A = self.orbspace['active_beta']
+        e_test = (
+            np.einsum("mm->", self.Z['a'][c, c]) 
+          + np.einsum("mm->", self.Z['b'][C, C])
+          + np.einsum("uv,uv->", self.Z['a'][a, a], self.rdms['a'])
+          + np.einsum("uv,uv->", self.Z['b'][A, A], self.rdms['b'])
+          + 0.5 * np.einsum("mnmn->", self.V['aa'][c, c, c, c])
+          + np.einsum("mnmn->", self.V['ab'][c, C, c, C])
+          + 0.5 * np.einsum("mnmn->", self.V['bb'][C, C, C, C])
+          + np.einsum("mumv,uv->", self.V['aa'][c, a, c, a], self.rdms['a'])
+          + np.einsum("umvm,uv->", self.V['ab'][a, C, a, C], self.rdms['a'])
+          + np.einsum("mumv,uv->", self.V['ab'][c, A, c, A], self.rdms['b'])
+          + np.einsum("mumv,uv->", self.V['bb'][C, A, C, A], self.rdms['b'])
+          + 0.25 * np.einsum("uvxy,uvxy->", self.V['aa'][a, a, a, a], self.rdms['aa'])
+          + np.einsum("uvxy,uvxy->", self.V['ab'][a, A, a, A], self.rdms['ab'])
+          + 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], self.rdms['bb'])
+          + self.nuclear_repulsion
+        )
+        self.e_cas = e_test
+
+    def compute_cas_energy_from_fock(self):
+        c = self.orbspace['core_alpha']
+        C = self.orbspace['core_beta']
+        a = self.orbspace['active_alpha']
+        A = self.orbspace['active_beta']
+        e_test = (
+            np.einsum("mm->", self.F['a'][c, c]) 
+          + np.einsum("mm->", self.F['b'][C, C])
+          + np.einsum("uv,uv->", self.F['a'][a, a], self.rdms['a'])
+          + np.einsum("uv,uv->", self.F['b'][A, A], self.rdms['b'])
+          - 0.5 * np.einsum("mnmn->", self.V['aa'][c, c, c, c])
+          - np.einsum("mnmn->", self.V['ab'][c, C, c, C])
+          - 0.5 * np.einsum("mnmn->", self.V['bb'][C, C, C, C])
+          - np.einsum("mumv,uv->", self.V['aa'][c, a, c, a], self.rdms['a'])
+          - np.einsum("umvm,uv->", self.V['ab'][a, C, a, C], self.rdms['a'])
+          - np.einsum("mumv,uv->", self.V['ab'][c, A, c, A], self.rdms['b'])
+          - np.einsum("mumv,uv->", self.V['bb'][C, A, C, A], self.rdms['b'])
+          - 0.5 * np.einsum("xuyv,xy,uv->", self.V['aa'][a, a, a, a], self.rdms['a'], self.rdms['a'])
+          - np.einsum("xuyv,xy,uv->", self.V['ab'][a, A, a, A], self.rdms['a'], self.rdms['b'])
+          - 0.5 * np.einsum("xuyv,xy,uv->", self.V['bb'][A, A, A, A], self.rdms['b'], self.rdms['b'])
+          + 0.25 * np.einsum("uvxy,uvxy->", self.V['aa'][a, a, a, a], self.lambdas['aa'])
+          + np.einsum("uvxy,uvxy->", self.V['ab'][a, A, a, A], self.lambdas['ab'])
+          + 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], self.lambdas['bb'])
+          + self.nuclear_repulsion
+        )
+        self.e_cas_from_fock = e_test
+
+    def freeze_orbitals(self):
+        self.nelectron -= 2*self.nfrozen
+        self.norb -= self.nfrozen
+        self.ncore_alpha -= self.nfrozen 
+        self.ncore_beta -= self.nfrozen 
+        #
+        self.nhole_alpha = self.ncore_alpha + self.nact_alpha
+        self.nhole_beta = self.ncore_beta + self.nact_beta
+        #
+        self.orbspace = {
+            'core_alpha': slice(0, self.ncore_alpha),
+            'active_alpha': slice(self.ncore_alpha, self.ncore_alpha + self.nact_alpha),
+            'virt_alpha': slice(self.ncore_alpha + self.nact_alpha, self.norb),
+            'core_beta': slice(0, self.ncore_beta),
+            'active_beta': slice(self.ncore_beta, self.ncore_beta + self.nact_beta),
+            'virt_beta': slice(self.ncore_beta + self.nact_beta, self.norb),
+            'hole_core_alpha': slice(0, self.ncore_alpha),
+            'hole_active_alpha': slice(self.ncore_alpha, self.ncore_alpha + self.nact_alpha),
+            'particle_active_alpha': slice(0, self.nact_alpha),
+            'particle_virt_alpha': slice(self.nact_alpha, self.nact_alpha + self.nvirt_alpha),
+            'hole_core_beta': slice(0, self.ncore_beta),
+            'hole_active_beta': slice(self.ncore_beta, self.ncore_beta + self.nact_beta),
+            'particle_active_beta': slice(0, self.nact_beta),
+            'particle_virt_beta': slice(self.nact_beta, self.nact_beta + self.nvirt_beta),
+            'hole_alpha': slice(0, self.ncore_alpha + self.nact_alpha),
+            'particle_alpha': slice(self.ncore_alpha, self.norb),
+            'hole_beta': slice(0, self.ncore_beta + self.nact_beta),
+            'particle_beta': slice(self.ncore_beta, self.norb),
+        }
+        #
+        corr = slice(self.nfrozen, self.norb + self.nfrozen)
+        self.F['a'] = self.F['a'][corr, corr]
+        self.F['b'] = self.F['b'][corr, corr]
+        self.V['aa'] = self.V['aa'][corr, corr, corr, corr]
+        self.V['ab'] = self.V['ab'][corr, corr, corr, corr]
+        self.V['bb'] = self.V['bb'][corr, corr, corr, corr]
+
 class SpinReference:
     
     def __init__(self, mc, mf, verbose=False):
