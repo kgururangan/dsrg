@@ -1,7 +1,7 @@
 import numpy as np
 from pyscf import gto, scf, mcscf
 from dsrg.reference import Reference
-from dsrg.dsrg_si import DSRG
+from dsrg.driver import DSRG
 
 RTOL = 1.0e-06
 ATOL = 1.0e-06
@@ -21,6 +21,7 @@ def test_mrdsrg_ldsrg2_nh_1():
 
     # Perform RHF calculation
     mf = scf.RHF(mol).run()
+    scf.rhf_symm.analyze(mf)
     # Ag B1g, B2g, B3g, Au, B1u, B2u, B3u
     # restricted_docc         [2,0,0,0,0,2,0,0]
     # active                  [1,0,1,1,0,1,1,1]
@@ -30,6 +31,7 @@ def test_mrdsrg_ldsrg2_nh_1():
     ncas = {'Ag': 1, 'B2g': 1, 'B3g': 1, 'B1u': 1, 'B2u': 1, 'B3u': 1}
     mo = mcscf.sort_mo_by_irrep(mc, mf.mo_coeff, ncas, ncore)
     mc.kernel(mo)
+    mc.analyze()
 
     # Create the reference
     # Pass in MO coefficients from CASSCF to use those orbitals in AO-to-MO transformation
@@ -38,16 +40,17 @@ def test_mrdsrg_ldsrg2_nh_1():
 
     # Run DSRG
     driver = DSRG(ref)
-    driver.run_ldsrg2(s=0.5, herm=False)
+    #driver.run_ldsrg2(s=0.5, herm=False)
+    driver.run_dsrg(method="ldsrg2", s=0.5, herm=False)
 
     #
     # Check the results
     # Source: MR-LDSRG(2) Results from Forte 
     # (includes 3-cumulant in energy)
     #
-    assert np.isclose(driver.ref.e_cas, -109.055262183808921, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2, -0.195362408475867, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -109.250624592284794, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.reference_energy, -109.055262183808921, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.correlation_energy, -0.195362408475867, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy, -109.250624592284794, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
     test_mrdsrg_ldsrg2_nh_1()

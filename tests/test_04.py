@@ -1,7 +1,7 @@
 import numpy as np
 from pyscf import gto, scf, mcscf, fci
 from dsrg.reference import Reference
-from dsrg.dsrg_si import DSRG
+from dsrg.driver import DSRG
 
 VERBOSE = 0
 RTOL = 1.0e-06
@@ -17,6 +17,7 @@ def test_mrdsrg_ldsrg2_hf():
                 symmetry="C2v"
     )
     mf = scf.RHF(mol).run()
+    scf.rhf_symm.analyze(mf)
 
     # Total orbital space
     nels = mol.nelectron
@@ -36,21 +37,22 @@ def test_mrdsrg_ldsrg2_hf():
     # Run CASCI
     mycas = mcscf.CASCI(mf, cas[1], cas[0])
     mycas.run()
+    mycas.analyze()
 
     ref = Reference(mycas, mf, verbose=True)
     ref.kernel(semi=True)
 
     driver = DSRG(ref)
-    driver.run_ldsrg2(s=2.0, herm=True)
+    driver.run_dsrg(method='ldsrg2', s=2.0, herm=True)
 
     #
     # Check the results
     # Source: MR-LDSRG(2) Results from 4c-DSRG-MRPT (Brian's code)
     # (includes 3-cumulant in energy)
     #
-    assert np.isclose(driver.ref.e_cas, -99.9015526, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2, -0.124514912932, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2 + driver.ref.e_cas, -100.0260675, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.reference_energy, -99.9015526, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.correlation_energy, -0.124514912932, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy, -100.0260675, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
     test_mrdsrg_ldsrg2_hf()

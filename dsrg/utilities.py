@@ -15,12 +15,23 @@ def spin_label(p):
         return "A"
 
 def regularized_denominator(x, s):
-    '''Compute the denomiator factor [1 - exp(s*x^2)]/x. For small
-    values of s*x^2, apply Taylor expansion of exp(s*x^2). This allows
-    one to recover the s -> infty limit.'''
     z = np.sqrt(s) * x
-    if abs(z) <= 1.0e-09:
+    small = np.abs(z) <= 1.0e-09
+    # For small z, use the Taylor approximation
+    result = np.where(
+        small,
+        np.sqrt(s) * (z - z ** 3 / 2 + z ** 5 / 6),
+        (1. - np.exp(-s * x ** 2)) / x
+    )
+    # result = (1. - np.exp(-s*x**2)) * np.reciprocal(x)
+    return result
+
+def regularized_denominator_2(x, s):
+    z = np.sqrt(s) * x
+
+    if np.abs(z) <= 1.0e-09:
         return np.sqrt(s)*(z - z**3/2 + z**5/6)
+
     return (1. - np.exp(-s * x**2)) / x
 
 def get_memory_usage():
