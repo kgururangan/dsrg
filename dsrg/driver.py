@@ -64,6 +64,8 @@ class DSRG:
             _method_name = 'NH-' + method.upper()
         print(f"    ==> {_method_name} Amplitude Equations <==")
         print("")
+        print(f"Flow parameter (s): {s} 1/Eh^2")
+        print("")
         t_start = time.time()
 
         # Build n-body (regularized) MP denominators
@@ -149,7 +151,7 @@ class DSRG:
     def compute_hbar(self, o, max_ncomm, herm, verbose=False):
         # Initial values
         for key in self.hbar.keys():
-            hbar[key] *= 0.0
+            self.hbar[key] *= 0.0
         self.hbar['0'] = np.array([0.0])
         self.hbar['a'] = self.ref.F['a'].copy()
         self.hbar['b'] = self.ref.F['b'].copy()
