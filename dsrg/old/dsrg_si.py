@@ -1,8 +1,8 @@
 import time
 import numpy as np
 from dsrg.utilities import get_memory_usage, spin_label, spatial_index, regularized_denominator
-from dsrg.spinintegrated_contractions import *
-from dsrg.contractions_opt import *
+from dsrg.old.spinintegrated_contractions import *
+from dsrg.wicked_contractions.ldsrg2_contractions import *
 
 REMOVE_L3 = False
 USE_OPT = True

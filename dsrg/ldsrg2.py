@@ -7,23 +7,16 @@ from dsrg.wicked_contractions.ldsrg2_contractions import *
 
 def build_denominators(s, eps_a, eps_b, ref):
 
-    denom = {'a': np.zeros((ref.npart_alpha, ref.nhole_alpha)),
-             'b': np.zeros((ref.npart_beta, ref.nhole_beta)),
-             'aa': np.zeros((ref.npart_alpha, ref.npart_alpha, ref.nhole_alpha, ref.nhole_alpha)),
-             'ab': np.zeros((ref.npart_alpha, ref.npart_beta, ref.nhole_alpha, ref.nhole_beta)),
-             'bb': np.zeros((ref.npart_beta, ref.npart_beta, ref.nhole_beta, ref.nhole_beta))}
-
     n = np.newaxis
     h = ref.orbspace['hole_alpha']
     p = ref.orbspace['particle_alpha']
     H = ref.orbspace['hole_beta']
     P = ref.orbspace['particle_beta']
 
-    denom['a'] = eps_a[n, h] - eps_a[p, n]
-    denom['b'] = eps_b[n, H] - eps_b[P, n]
-    denom['aa'] = eps_a[n, n, h, n] + eps_a[n, n, n, h] - eps_a[p, n, n, n] - eps_a[n, p, n, n]
-    denom['ab'] = eps_a[n, n, h, n] + eps_b[n, n, n, H] - eps_a[p, n, n, n] - eps_b[n, P, n, n]
-    denom['bb'] = eps_b[n, n, H, n] + eps_b[n, n, n, H] - eps_b[P, n, n, n] - eps_b[n, P, n, n]
+    denom = {'a': eps_a[n, h] - eps_a[p, n], 'b': eps_b[n, H] - eps_b[P, n],
+             'aa': eps_a[n, n, h, n] + eps_a[n, n, n, h] - eps_a[p, n, n, n] - eps_a[n, p, n, n],
+             'ab': eps_a[n, n, h, n] + eps_b[n, n, n, H] - eps_a[p, n, n, n] - eps_b[n, P, n, n],
+             'bb': eps_b[n, n, H, n] + eps_b[n, n, n, H] - eps_b[P, n, n, n] - eps_b[n, P, n, n]}
 
     reg_denom = {}
     for key, value in denom.items():
