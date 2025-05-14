@@ -3,6 +3,7 @@ from importlib import import_module
 import numpy as np
 
 import dsrg
+import dsrg.methods
 from dsrg.utilities import get_memory_usage, spin_label, spatial_index
 
 class DSRG:
@@ -36,7 +37,7 @@ class DSRG:
 
         if method.lower() not in dsrg.methods.MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
-        self.calc_module = import_module("dsrg.methods" + method.lower())
+        self.calc_module = import_module("dsrg.methods." + method.lower())
         self.update_hbar = getattr(self.calc_module, 'update_hbar')
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
