@@ -1,7 +1,7 @@
 import numpy as np
 from pyscf import gto, scf, mcscf
 from dsrg.reference import Reference
-#from dsrg.dsrg_si import DSRG
+#from dsrg.old.dsrg_si import DSRG
 from dsrg.driver import DSRG
 
 RTOL = 1.0e-06
@@ -43,6 +43,7 @@ def test_mrdsrg_ldsrg2_1():
 
     # Run DSRG
     driver = DSRG(ref)
+    #driver.run_ldsrg2(s=1.0, herm=True, max_ncomm=12)
     driver.run_dsrg(method='ldsrg2', s=1.0, herm=True, max_ncomm=12)
 
     #

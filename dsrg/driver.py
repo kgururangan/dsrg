@@ -3,6 +3,7 @@ from importlib import import_module
 import numpy as np
 
 import dsrg
+import dsrg.methods
 from dsrg.utilities import get_memory_usage, spin_label, spatial_index
 
 class DSRG:
@@ -34,9 +35,9 @@ class DSRG:
             self._par['nbody_h'] = 3
             self._par['comm_approx'] = 1
 
-        if method.lower() not in dsrg.MODULES:
+        if method.lower() not in dsrg.methods.MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
-        self.calc_module = import_module("dsrg." + method.lower())
+        self.calc_module = import_module("dsrg.methods." + method.lower())
         self.update_hbar = getattr(self.calc_module, 'update_hbar')
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
@@ -64,7 +65,7 @@ class DSRG:
             _method_name = 'NH-' + method.upper()
         print(f"    ==> {_method_name} Amplitude Equations <==")
         print("")
-        print(f"Flow parameter (s): {s} 1/Eh^2")
+        print(f"   Flow parameter (s): {s} 1/Eh^2")
         print("")
         t_start = time.time()
 
@@ -187,6 +188,242 @@ class DSRG:
             for key, value in o.items():
                 o[key] = np.zeros_like(o_old[key])
         return ncomm, resid
+
+    def print_amplitudes(self):
+
+        nua, nub, noa, nob = self.T['ab'].shape
+
+        print("\n   Largest Singly and Doubly Excited Amplitudes:")
+        n = 1
+        for a in range(nua):
+            for i in range(noa):
+                if abs(self.T['a'][a, i]) <= self._print_threshold: continue
+                print(
+                    "      [{}]     {}A  ->  {}A   =   {:.6f}".format(
+                        n,
+                        i + self.ref.nfrozen + 1,
+                        a + self.ref.nfrozen + self.ref.ncore_alpha + 1,
+                        self.T['a'][a, i],
+                    )
+                )
+                n += 1
+        for a in range(nub):
+            for i in range(nob):
+                if abs(self.T['b'][a, i]) <= self._print_threshold: continue
+                print(
+                    "      [{}]     {}B  ->  {}B   =   {:.6f}".format(
+                        n,
+                        i + self.ref.nfrozen + 1,
+                        a + self.ref.nfrozen + self.ref.ncore_beta + 1,
+                        self.T['b'][a, i],
+                    )
+                )
+                n += 1
+        for a in range(nua):
+            for b in range(a + 1, nua):
+                for i in range(noa):
+                    for j in range(i + 1, noa):
+                        if abs(self.T['aa'][a, b, i, j]) <= self._print_threshold: continue
+                        print(
+                            "      [{}]     {}A  {}A  ->  {}A  {}A  =   {:.6f}".format(
+                                n,
+                                i + self.ref.nfrozen + 1,
+                                j + self.ref.nfrozen + 1,
+                                a + self.ref.ncore_alpha + self.ref.nfrozen + 1,
+                                b + self.ref.ncore_alpha + self.ref.nfrozen + 1,
+                                self.T['aa'][a, b, i, j],
+                            )
+                        )
+                        n += 1
+        for a in range(nub):
+            for b in range(a + 1, nub):
+                for i in range(nob):
+                    for j in range(i + 1, nob):
+                        if abs(self.T['bb'][a, b, i, j]) <= self._print_threshold: continue
+                        print(
+                            "      [{}]     {}B  {}B  ->  {}B  {}B  =   {:.6f}".format(
+                                n,
+                                i + self.ref.nfrozen + 1,
+                                j + self.ref.nfrozen + 1,
+                                a + self.ref.ncore_beta + self.ref.nfrozen + 1,
+                                b + self.ref.ncore_beta + self.ref.nfrozen + 1,
+                                self.T['bb'][a, b, i, j],
+                            )
+                        )
+                        n += 1
+        for a in range(nua):
+            for b in range(nub):
+                for i in range(noa):
+                    for j in range(nob):
+                        if abs(self.T['ab'][a, b, i, j]) <= self._print_threshold: continue
+                        print(
+                            "      [{}]     {}A  {}B  ->  {}A  {}B  =   {:.6f}".format(
+                                n,
+                                i + self.ref.nfrozen + 1,
+                                j + self.ref.nfrozen + 1,
+                                a + self.ref.ncore_alpha + self.ref.nfrozen + 1,
+                                b + self.ref.ncore_beta + self.ref.nfrozen + 1,
+                                self.T['ab'][a, b, i, j],
+                            )
+                        )
+                        n += 1
+                        
+class RICMRCC:
+
+    def __init__(self, ref, print_threshold=0.09):
+        self.ref = ref
+        self.reference_energy = self.ref.e_cas
+        self._print_threshold = print_threshold
+        self._par = {'nbody_t': 0,
+                     'nbody_h': 0,
+                     'comm_approx': 0}
+        self.T = None
+
+
+    def load_calculation(self, method):
+
+        if method in ["ricmrccsd"]:
+            self._par['nbody_t'] = 2
+            self._par['nbody_h'] = 2
+            self._par['comm_approx'] = 2
+
+        if method.lower() not in dsrg.methods.MODULES:
+            raise NotImplementedError(f"Method {method.upper()} not implemented!")
+        self.calc_module = import_module("dsrg.methods." + method.lower())
+        self.residual_function = getattr(self.calc_module, 'compute_residual')
+        self.update_t = getattr(self.calc_module, 'update_t')
+        self.initial_guess = getattr(self.calc_module, 'initial_guess')
+        self.denom_builder = getattr(self.calc_module, 'build_denominators')
+
+
+    def initialize_hbar(self):
+        
+        # Assemble bare Hamiltonian dictionary
+        self.hamiltonian = {'a': self.ref.F['a'],
+                            'b': self.ref.F['b'],
+                            'aa': self.ref.V['aa'],
+                            'ab': self.ref.V['ab'], 
+                            'bb': self.ref.V['bb']}
+
+
+    def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05):
+
+        # Mount the desired calculation
+        self.load_calculation(method)
+        print(f"   ... loaded calculation modules from 'dsrg.{method.lower()}.py'")
+
+        if herm:
+            _method_name = method.upper()
+        else:
+            _method_name = 'NH-' + method.upper()
+        print(f"    ==> {_method_name} Amplitude Equations <==")
+        print("")
+        print(f"   Flow parameter (s): {s} 1/Eh^2")
+        print("")
+        t_start = time.time()
+
+        # Build n-body (regularized) MP denominators
+        tic = time.time()
+        denom, reg_denom = self.denom_builder(
+            s,
+            np.real(np.diagonal(self.ref.F['a'])),
+            np.real(np.diagonal(self.ref.F['b'])),
+            self.ref,
+        )
+        toc = time.time()
+        print(f"   ... build n-body regularized denominators: {toc - tic}s")
+
+        # Obtain initial guess
+        tic = time.time()
+        if not self.T:
+            self.T = self.initial_guess(self.ref, denom, reg_denom)
+        toc = time.time()
+        print(f"   ... initial T amplitudes: {toc - tic}s")
+
+        # Initialize HBar
+        tic = time.time()
+        self.initialize_hbar()
+        toc = time.time()
+        print(f'   ... allocate HBar arrays: {toc - tic}s')
+
+        #
+        # ric-MRCC iterations
+        #
+        e_old = .0
+        it = 0
+        print("")
+        print("     Iter               Energy                 |dE|               |dT|  Wall Time     Memory")
+        while it < maxiter:
+            
+            tic = time.perf_counter()
+            
+            # Compute residual
+            X = self.compute_residual(herm=herm)
+            energy = X['0']
+            
+            # Update amplitudes
+            self.T, dT = self.update_t(self.T, X, self.ref, denom, reg_denom)
+            toc = time.perf_counter()
+            minutes, seconds = divmod(toc - tic, 60)
+            
+            # Record iteration information
+            delta_e = energy - e_old
+            resid = sum([np.linalg.norm(value.flatten()) for _, value in dT.items()])
+            e_old = energy.copy()
+            
+            # Print the iteration
+            print("    {: 5d} {: 20.12f} {: 20.12f} {: 20.12f} {:.2f}m {:.2f}s    {:.2f} MB".format(it,
+                                                                                                    energy,
+                                                                                                    delta_e,
+                                                                                                    resid,
+                                                                                                    minutes, seconds,
+                                                                                                    get_memory_usage()))
+            # Check convergence criterion
+            if abs(delta_e) < e_conv and resid < t_conv:
+                print(f"    ric-MRCC successfully converged after {it} iterations.")
+                break
+            # Update iteration counter
+            it += 1
+        else:
+            print("   ric-MRCC did not converge")
+        # Record the energy
+        self.correlation_energy = energy
+        self.total_energy = self.correlation_energy + self.reference_energy
+        # Record total time and print summary
+        minutes, seconds = divmod(time.time() - t_start, 60)
+        print("")
+        print("    Calculation Summary:")
+        print("    --------------------")
+        print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+        print("    Unrelaxed ric-MRCC Correlation Energy: {: 20.12f}".format(self.correlation_energy))
+        print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
+        print("")
+        print("    Largest Singly and Doubly Excited Amplitudes")
+        print("    --------------------------------------------")
+        self.print_amplitudes()
+        print("")
+        print("    ric-MRCC calculation completed in {:.2f}m {:.2f}s".format(minutes, seconds))
+        print(f"    Memory usage: {get_memory_usage()} MB")
+        print("")
+
+    def compute_residual(self, herm):
+        # Slicing
+        h = self.ref.orbspace['hole_alpha']
+        p = self.ref.orbspace['particle_alpha']
+        H = self.ref.orbspace['hole_beta']
+        P = self.ref.orbspace['particle_beta']
+
+        # Initial value for the residual (0 commutators)
+        X = {'0': 0.0,
+             'a': self.ref.F['a'][p, h].copy(),
+             'b': self.ref.F['b'][P, H].copy(),
+             'aa': 0.25 * self.ref.V['aa'][p, p, h, h].copy(),
+             'ab': self.ref.V['ab'][p, P, h, H].copy(), 
+             'bb': 0.25 * self.ref.V['bb'][P, P, H, H].copy()}
+
+        X = self.residual_function(X, self.hamiltonian, self.T, self.ref, herm)
+
+        return X
 
     def print_amplitudes(self):
 

@@ -74,7 +74,7 @@ def make_casci_rdm123(mc, norb_cas, nelcas_a, nelcas_b):
     dm3[1::2, ::2, 1::2, 1::2, 1::2, ::2] = -dm3abb.transpose(1, 0, 2, 4, 5, 3)
     dm3[1::2, 1::2, ::2, 1::2, 1::2, ::2] = dm3abb.transpose(1, 2, 0, 4, 5, 3)
 
-    print("|dm3| = ", np.linalg.norm(dm3.flatten()))
+    # print("|dm3| = ", np.linalg.norm(dm3.flatten()))
     
     rdms = {'1': dm1, '2': dm2, '3': dm3}
     return rdms

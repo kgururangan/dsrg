@@ -1,7 +1,7 @@
 import numpy as np
 from pyscf import gto, scf, mcscf
 from dsrg.reference import SpinReference
-from dsrg.dsrg_so import SpinDSRG
+from dsrg.driver_so import DSRG
 
 VERBOSE = 0
 RTOL = 1.0e-06
@@ -40,17 +40,17 @@ def test_mrdsrg_ldsrg2_hf():
     ref = SpinReference(mycas, mf, verbose=True)
     ref.kernel(semi=True)
 
-    driver = SpinDSRG(ref)
-    driver.run_ldsrg2(s=2.0, herm=True)
+    driver = DSRG(ref)
+    driver.run_dsrg(method='ldsrg2_so', s=2.0, herm=True)
 
     #
     # Check the results
     # Source: MR-LDSRG(2) Results from 4c-DSRG-MRPT (Brian's code)
     # (neglects 3-cumulant in energy)
     #
-    assert np.isclose(ref.e_cas, -99.9015526, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2, -0.124561571625, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.e_dsrg2 + ref.e_cas, -100.026114187584, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.reference_energy, -99.9015526, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.correlation_energy, -0.124561571625, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy, -100.026114187584, rtol=RTOL, atol=ATOL)
 
 if __name__ == "__main__":
     test_mrdsrg_ldsrg2_hf()
