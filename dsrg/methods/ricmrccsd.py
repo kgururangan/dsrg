@@ -94,7 +94,7 @@ def update_t(T, X, ref, denom, reg_denom):
     return T, dT
 
 
-def compute_residual(h, T, ref, herm):
+def compute_residual(hamiltonian, T, ref, herm):
     
     # Slicing
     h = ref.orbspace['hole_alpha']
@@ -112,20 +112,20 @@ def compute_residual(h, T, ref, herm):
     
     # 0-body (energy)
     _t0 = time.time()
-    X = H_T_ncomm1_nbody0(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    X = H_T_ncomm2_nbody0(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = H_T_ncomm1_nbody0(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = H_T_ncomm2_nbody0(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
     # print(f"time for zerobody {time.time() - _t0}")
     if herm:
         X['0'] *= 2.0
     # 1-body
     _t0 = time.time()
-    X = H_T_ncomm1_nbody1(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    X = H_T_ncomm2_nbody1(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = H_T_ncomm1_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = H_T_ncomm2_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
     # print(f"time for onebody {time.time() - _t0}")
     # 2-body
     _t0 = time.time()
-    X = H_T_ncomm1_nbody2(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    X = H_T_ncomm2_nbody2(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = H_T_ncomm1_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = H_T_ncomm2_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
     # print(f"time for twobody {time.time() - _t0}")
     # antisymmetrize twobody
     X['aa'] -= X['aa'].transpose(1, 0, 2, 3)

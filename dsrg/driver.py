@@ -3,7 +3,7 @@ from importlib import import_module
 import numpy as np
 
 import dsrg
-import dsrg.methods
+from dsrg.methods import MODULES
 from dsrg.utilities import get_memory_usage, spin_label, spatial_index
 
 class DSRG:
@@ -37,7 +37,7 @@ class DSRG:
 
         if method.lower() not in dsrg.methods.MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
-        self.calc_module = import_module("dsrg.methods." + method.lower())
+        self.calc_module = import_module(f"{MODULES}." + method.lower())
         self.update_hbar = getattr(self.calc_module, 'update_hbar')
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
@@ -282,14 +282,14 @@ class RICMRCC:
 
     def load_calculation(self, method):
 
-        if method in ["ricmrccsd"]:
+        if method in ["ricmrccsd", "ricmrccsd_approx"]:
             self._par['nbody_t'] = 2
             self._par['nbody_h'] = 2
             self._par['comm_approx'] = 2
 
         if method.lower() not in dsrg.methods.MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
-        self.calc_module = import_module("dsrg.methods." + method.lower())
+        self.calc_module = import_module(f"{MODULES}." + method.lower())
         self.residual_function = getattr(self.calc_module, 'compute_residual')
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
