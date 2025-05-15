@@ -35,9 +35,9 @@ class DSRG:
             self._par['nbody_h'] = 3
             self._par['comm_approx'] = 1
 
-        if method.lower() not in dsrg.methods.MODULES:
+        if method.lower() not in MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
-        self.calc_module = import_module(f"{MODULES}." + method.lower())
+        self.calc_module = import_module(f"dsrg.methods.{method.lower()}")
         self.update_hbar = getattr(self.calc_module, 'update_hbar')
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
@@ -287,9 +287,9 @@ class RICMRCC:
             self._par['nbody_h'] = 2
             self._par['comm_approx'] = 2
 
-        if method.lower() not in dsrg.methods.MODULES:
+        if method.lower() not in MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
-        self.calc_module = import_module(f"{MODULES}." + method.lower())
+        self.calc_module = import_module(f"dsrg.methods.{method.lower()}")
         self.residual_function = getattr(self.calc_module, 'compute_residual')
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
