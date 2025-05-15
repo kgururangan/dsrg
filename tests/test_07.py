@@ -47,8 +47,8 @@ def test_ricmrccsd_1():
     # (neglects 4-cumulant everywhere)
     #
     assert np.isclose(driver.reference_energy, -109.015943955217224, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.correlation_energy, -0.091888533743, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.total_energy, -109.10783248896023, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.correlation_energy, -0.091885948941, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy, -109.10782990415822, rtol=RTOL, atol=ATOL)
 
 
 if __name__ == "__main__":

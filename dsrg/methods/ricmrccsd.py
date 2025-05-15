@@ -94,7 +94,22 @@ def update_t(T, X, ref, denom, reg_denom):
     return T, dT
 
 
-def compute_residual(X, h, T, ref, herm):
+def compute_residual(h, T, ref, herm):
+    
+    # Slicing
+    h = ref.orbspace['hole_alpha']
+    p = ref.orbspace['particle_alpha']
+    H = ref.orbspace['hole_beta']
+    P = ref.orbspace['particle_beta']
+
+    # Initial value for the residual (0 commutators)
+    X = {'0': 0.0,
+         'a': ref.F['a'][p, h].copy(),
+         'b': ref.F['b'][P, H].copy(),
+         'aa': 0.25 * ref.V['aa'][p, p, h, h].copy(),
+         'ab': ref.V['ab'][p, P, h, H].copy(),
+         'bb': 0.25 * ref.V['bb'][P, P, H, H].copy()}
+    
     # 0-body (energy)
     _t0 = time.time()
     X = H_T_ncomm1_nbody0(X, h, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)

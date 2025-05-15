@@ -358,7 +358,7 @@ class RICMRCC:
             tic = time.perf_counter()
             
             # Compute residual
-            X = self.compute_residual(herm=herm)
+            X = self.residual_function(self.hamiltonian, self.T, self.ref, herm=herm)
             energy = X['0']
             
             # Update amplitudes
@@ -405,25 +405,7 @@ class RICMRCC:
         print("    ric-MRCC calculation completed in {:.2f}m {:.2f}s".format(minutes, seconds))
         print(f"    Memory usage: {get_memory_usage()} MB")
         print("")
-
-    def compute_residual(self, herm):
-        # Slicing
-        h = self.ref.orbspace['hole_alpha']
-        p = self.ref.orbspace['particle_alpha']
-        H = self.ref.orbspace['hole_beta']
-        P = self.ref.orbspace['particle_beta']
-
-        # Initial value for the residual (0 commutators)
-        X = {'0': 0.0,
-             'a': self.ref.F['a'][p, h].copy(),
-             'b': self.ref.F['b'][P, H].copy(),
-             'aa': 0.25 * self.ref.V['aa'][p, p, h, h].copy(),
-             'ab': self.ref.V['ab'][p, P, h, H].copy(), 
-             'bb': 0.25 * self.ref.V['bb'][P, P, H, H].copy()}
-
-        X = self.residual_function(X, self.hamiltonian, self.T, self.ref, herm)
-
-        return X
+        
 
     def print_amplitudes(self):
 
