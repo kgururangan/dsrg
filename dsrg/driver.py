@@ -176,6 +176,8 @@ class DSRG:
             for key, value in o.items():
                 o[key] /= ncomm
                 resid += np.linalg.norm(o[key].flatten())
+            if verbose:
+                print(f"         E{ncomm} = {self.hbar['0'][0]:.10f}  |H(T1)| = {resid:.10f}")
             if resid < 1e-12:
                 break
             # Increment many-body components of Hbar
@@ -282,7 +284,7 @@ class RICMRCC:
 
     def load_calculation(self, method):
 
-        if method in ["ricmrccsd", "ricmrccsd_approx"]:
+        if method in ["ricmrccsd", "ricmrccsd_approx", "sqricmrccsd"]:
             self._par['nbody_t'] = 2
             self._par['nbody_h'] = 2
             self._par['comm_approx'] = 2
