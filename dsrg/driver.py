@@ -284,7 +284,7 @@ class RICMRCC:
 
     def load_calculation(self, method):
 
-        if method in ["ricmrccsd", "ricmrccsd_approx", "sqricmrccsd"]:
+        if method in ["ricmrccsd", "ricmrccsd_approx", "sqricmrccsd", "sqricmrccsd_approx"]:
             self._par['nbody_t'] = 2
             self._par['nbody_h'] = 2
             self._par['comm_approx'] = 2
