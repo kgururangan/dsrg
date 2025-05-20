@@ -1,6 +1,7 @@
 import time
 from importlib import import_module
 import numpy as np
+from copy import deepcopy
 
 import dsrg
 from dsrg.methods import MODULES
@@ -284,7 +285,8 @@ class RICMRCC:
 
     def load_calculation(self, method):
 
-        if method in ["ricmrccsd", "ricmrccsd_approx", "sqricmrccsd", "sqricmrccsd_approx"]:
+        if method in ["ricmrccsd", "ricmrccsd_approx", "sqricmrccsd", "sqricmrccsd_approx",
+                      "ricmrccsd1"]:
             self._par['nbody_t'] = 2
             self._par['nbody_h'] = 2
             self._par['comm_approx'] = 2
@@ -339,6 +341,7 @@ class RICMRCC:
         tic = time.time()
         if not self.T:
             self.T = self.initial_guess(self.ref, denom, reg_denom)
+        T_pert = deepcopy(self.T)
         toc = time.time()
         print(f"   ... initial T amplitudes: {toc - tic}s")
 
@@ -364,7 +367,7 @@ class RICMRCC:
             energy = X['0']
             
             # Update amplitudes
-            self.T, dT = self.update_t(self.T, X, self.ref, denom, reg_denom)
+            self.T, dT = self.update_t(self.T, X, self.ref, denom, reg_denom, T_pert=T_pert)
             toc = time.perf_counter()
             minutes, seconds = divmod(toc - tic, 60)
             

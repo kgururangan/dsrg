@@ -67,7 +67,7 @@ def initial_guess(ref, denom, reg_denom):
     return T
 
 
-def update_t(T, X, ref, denom, reg_denom):
+def update_t(T, X, ref, denom, reg_denom, **kwargs):
     
     # Slicing
     ha = ref.orbspace['hole_active_alpha']
