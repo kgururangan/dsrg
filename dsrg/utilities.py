@@ -1,6 +1,22 @@
 import os
 import psutil
 import numpy as np
+import subprocess
+
+def flatten_dict_to_vector(d):
+    return np.concatenate([v.ravel() for v in d.values()])
+
+def unflatten_vector_to_dict(vec, shapes, sizes):
+    out = {}
+    i = 0
+    for k in shapes:
+        sz = sizes[k]
+        out[k] = vec[i:i + sz].reshape(shapes[k])
+        i += sz
+    return out
+
+def numel_in_dict(d):
+    return sum([np.prod(v.shape) for v in d.values()])
 
 def spatial_index(p):
     if p % 2 == 0:
@@ -41,3 +57,21 @@ def get_memory_usage():
     memory = current_process.memory_info().rss
     return memory / (1024 * 1024)
 
+def clean_up(fid, n):
+    for i in range(n):
+        remove_file(fid + "-" + str(i + 1) + ".npy")
+    return
+
+def remove_file(filePath):
+    try:
+        os.remove(filePath)
+    except OSError:
+        pass
+    return
+
+def get_git_commit_id():
+    try:
+        commit_id = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).strip().decode('utf-8')
+        return commit_id
+    except subprocess.CalledProcessError:
+        return "N/A"

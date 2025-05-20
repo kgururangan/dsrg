@@ -5,11 +5,19 @@ from copy import deepcopy
 
 import dsrg
 from dsrg.methods import MODULES
-from dsrg.utilities import get_memory_usage, spin_label, spatial_index
+from dsrg.utilities import (get_memory_usage, 
+                            spin_label, 
+                            spatial_index, 
+                            get_git_commit_id, 
+                            numel_in_dict,
+                            unflatten_vector_to_dict)
+from dsrg.diis import DIIS
 
 class DSRG:
 
     def __init__(self, ref, print_threshold=0.09):
+        self.print_commit_id()
+        
         self.ref = ref
         self.reference_energy = self.ref.e_cas
         self._print_threshold = print_threshold
@@ -17,6 +25,10 @@ class DSRG:
                      'nbody_h': 0,
                      'comm_approx': 0}
         self.T = None
+        
+        
+    def print_commit_id(self):
+        print(f"   >> Git commit ID cd {get_git_commit_id()} <<")
 
 
     def load_calculation(self, method):
@@ -54,7 +66,7 @@ class DSRG:
                 self.hbar[key] = np.zeros(2*n * (self.ref.norb,))
 
 
-    def run_dsrg(self, method, s, maxiter=80, herm=True, conv=1.0e-07, max_ncomm=12):
+    def run_dsrg(self, method, s, maxiter=80, herm=True, conv=1.0e-07, max_ncomm=12, diis_size=6, out_of_core=False):
 
         # Mount the desired calculation
         self.load_calculation(method)
@@ -66,7 +78,7 @@ class DSRG:
             _method_name = 'NH-' + method.upper()
         print(f"    ==> {_method_name} Amplitude Equations <==")
         print("")
-        print(f"   Flow parameter (s): {s} 1/Eh^2")
+        print(f"   Flow parameter (s): {s} Eh^-2")
         print("")
         t_start = time.time()
 
@@ -97,6 +109,13 @@ class DSRG:
         toc = time.time()
         print(f'   ... allocate HBar arrays: {toc - tic}s')
 
+        # Initialize DIIS engine
+        # diis_engine = DIIS(
+        #     ndim=numel_in_dict(self.T),
+        #     diis_size=diis_size,
+        #     out_of_core=out_of_core
+        # )
+
         #
         # DSRG iterations
         #
@@ -124,8 +143,14 @@ class DSRG:
                 print(f"    MR-DSRG successfully converged after {it} iterations.")
                 break
             e_old = energy.copy()
+            
             # Update amplitudes
             self.T = self.update_t(self.T, self.hbar, self.ref, denom, reg_denom)
+            
+            # DIIS extrapolate
+            # diis_engine.push(self.T, dT, it)
+            # if it >= diis_size:  
+            
             # Update iteration counter
             it += 1
         else:
@@ -274,6 +299,8 @@ class DSRG:
 class RICMRCC:
 
     def __init__(self, ref, print_threshold=0.09):
+        self.print_commit_id()
+        
         self.ref = ref
         self.reference_energy = self.ref.e_cas
         self._print_threshold = print_threshold
@@ -281,6 +308,10 @@ class RICMRCC:
                      'nbody_h': 0,
                      'comm_approx': 0}
         self.T = None
+
+
+    def print_commit_id(self):
+        print(f"   >> Git commit ID cd {get_git_commit_id()} <<")
 
 
     def load_calculation(self, method):
@@ -310,7 +341,7 @@ class RICMRCC:
                             'bb': self.ref.V['bb']}
 
 
-    def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05):
+    def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05, diis_size=6, out_of_core=False):
 
         # Mount the desired calculation
         self.load_calculation(method)
@@ -322,7 +353,7 @@ class RICMRCC:
             _method_name = 'NH-' + method.upper()
         print(f"    ==> {_method_name} Amplitude Equations <==")
         print("")
-        print(f"   Flow parameter (s): {s} 1/Eh^2")
+        print(f"   Flow parameter (s): {s} Eh^-2")
         print("")
         t_start = time.time()
 
@@ -350,6 +381,16 @@ class RICMRCC:
         self.initialize_hbar()
         toc = time.time()
         print(f'   ... allocate HBar arrays: {toc - tic}s')
+        
+        # Initialize DIIS engine
+        diis_engine = DIIS(
+            ndim=numel_in_dict(self.T),
+            diis_size=diis_size,
+            out_of_core=out_of_core
+        )
+
+        T_shapes = {k: v.shape for k, v in self.T.items()}
+        T_sizes = {k: v.size for k, v in self.T.items()}
 
         #
         # ric-MRCC iterations
@@ -387,6 +428,12 @@ class RICMRCC:
             if abs(delta_e) < e_conv and resid < t_conv:
                 print(f"    ric-MRCC successfully converged after {it} iterations.")
                 break
+                
+            # DIIS extrapolate
+            diis_engine.push(self.T, dT, it)
+            if it >= diis_size:  
+               self.T = unflatten_vector_to_dict(diis_engine.extrapolate(), T_shapes, T_sizes)
+                
             # Update iteration counter
             it += 1
         else:
