@@ -379,7 +379,10 @@ class RICMRCC:
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
         self.denom_builder = getattr(self.calc_module, 'build_denominators')
-        self.build_hbar_active = getattr(self.calc_module, 'compute_hbar_active')
+        try:
+            self.build_hbar_active = getattr(self.calc_module, 'compute_hbar_active')
+        except AttributeError:
+            self.build_hbar_active = None
 
 
     def initialize_hbar(self):
