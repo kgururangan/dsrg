@@ -4,4 +4,5 @@ We provide both spinorbital and spin-integrated implementations of multireferenc
 dynamical correlation effects missing from complete-active-space (CAS) wave functions of the configuration interaction 
 (CI) or self-consistent field (SCF) types. 
 
-The DSRG codes provided in this repository are based on the spinorbital implementations found in https://github.com/brianz98/4c-DSRG-MRPT.
+(see, also, the spinorbital relativistic DSRG codes available in https://github.com/brianz98/4c-DSRG-MRPT, which were 
+very helpful in developing this project).
