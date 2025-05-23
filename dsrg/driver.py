@@ -3,15 +3,22 @@ from importlib import import_module
 import numpy as np
 from copy import deepcopy
 
-import dsrg
 from dsrg.methods import MODULES
-from dsrg.utilities import (get_memory_usage, 
-                            spin_label, 
-                            spatial_index, 
+from dsrg.utilities import (get_memory_usage,
                             get_git_commit_id, 
                             numel_in_dict,
-                            unflatten_vector_to_dict)
+                            unflatten_vector_to_dict,
+                            semicanonicalize_active)
 from dsrg.diis import DIIS
+from dsrg.gno import denormal_order_ints
+
+try:
+    from fcipy.driver import Driver as CI
+    from fcipy.system import System as CI_system
+except ImportError:
+    print("FCIpy not installed - you will not be able to run relaxed or excited-state calculatiosn!")
+    pass
+
 
 class DSRG:
 
@@ -217,6 +224,49 @@ class DSRG:
                 o[key] = np.zeros_like(o_old[key])
         return ncomm, resid
 
+    def diagonalize_hbar(self, herm):
+
+        print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
+
+        # Slicing
+        a = self.ref.orbspace['active_alpha']
+        A = self.ref.orbspace['active_beta']
+        # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
+        hbar_act = {'a': self.hbar['a'][a, a],
+                    'b': self.hbar['b'][A, A],
+                    'aa': self.hbar['aa'][a, a, a, a],
+                    'ab': self.hbar['ab'][a, A, a, A],
+                    'bb': self.hbar['bb'][A, A, A, A]}
+        # Denormal order the Hbar integrals
+        print(f"    Denormal order active HBar integrals")
+        hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
+        print(f"    <HBar> = {e_scalar}")
+        print(f"    Semicanonicalize denormal-ordered active HBar integrals")
+        hbar_act = semicanonicalize_active(hbar_act, self.ref)
+        # Diagonalize Hamiltonian in the CAS space using fcipy
+        #
+        # Get a CI solver
+        #
+        print(">> WARNING: ASSUMING MULT = 1 HERE <<")
+        cisolver = CI(CI_system(self.ref.cas[0], self.ref.cas[1], 1, 0),
+                      hbar_act['a'], hbar_act['ab'],
+                      herm=herm)
+        cisolver.load_determinants(target_irrep=None)
+        print("    Diagonalizing active-space HBar in the CAS")
+        cisolver.diagonalize_hamiltonian()
+
+        self.relaxation_energy = cisolver.total_energy[0] + e_scalar
+        self.total_energy_relaxed = self.total_energy + self.relaxation_energy
+
+        print("")
+        print("    Calculation Summary:")
+        print("    --------------------")
+        print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+        print("    Unrelaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy))
+        print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy))
+        print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed))
+
+
     def print_amplitudes(self):
 
         nua, nub, noa, nob = self.T['ab'].shape
@@ -329,6 +379,7 @@ class RICMRCC:
         self.update_t = getattr(self.calc_module, 'update_t')
         self.initial_guess = getattr(self.calc_module, 'initial_guess')
         self.denom_builder = getattr(self.calc_module, 'build_denominators')
+        self.build_hbar_active = getattr(self.calc_module, 'compute_hbar_active')
 
 
     def initialize_hbar(self):
@@ -343,11 +394,14 @@ class RICMRCC:
 
     def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05, diis_size=6, out_of_core=False):
 
+        # Set hermiticity flag
+        self.herm = herm
+
         # Mount the desired calculation
         self.load_calculation(method)
         print(f"   ... loaded calculation modules from 'dsrg.{method.lower()}.py'")
 
-        if herm:
+        if self.herm:
             _method_name = method.upper()
         else:
             _method_name = 'NH-' + method.upper()
@@ -404,7 +458,7 @@ class RICMRCC:
             tic = time.perf_counter()
             
             # Compute residual
-            X = self.residual_function(self.hamiltonian, self.T, self.ref, herm=herm)
+            X = self.residual_function(self.hamiltonian, self.T, self.ref, herm=self.herm)
             energy = X['0']
             
             # Update amplitudes
@@ -458,6 +512,46 @@ class RICMRCC:
         print(f"    Memory usage: {get_memory_usage()} MB")
         print("")
         
+
+    def diagonalize_hbar(self, herm):
+        # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
+        print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
+        print("    Building 1- and 2-body components of HBar in the active space... ", end='')
+        _t0 = time.time()
+        hbar_act = self.build_hbar_active(self.hamiltonian, self.T, self.ref, self.herm)
+        print(f"   {time.time() - _t0} seconds\n")
+
+        # Denormal order the Hbar integrals
+        print(f"    Denormal order active HBar integrals...")
+        hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
+        print(f"    <HBar> = {e_scalar}")
+        print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
+        hbar_act = semicanonicalize_active(hbar_act, self.ref)
+        # Diagonalize Hamiltonian in the CAS space using fcipy
+        #
+        # Get a CI solver
+        #
+        print("\n    >> WARNING: ASSUMING MULT = 1 HERE <<")
+        cisolver = CI(CI_system(self.ref.cas[0], self.ref.cas[1], 1, 0),
+                      hbar_act['a'], hbar_act['ab'],
+                      herm=herm)
+        cisolver.load_determinants(target_irrep=None)
+        print("    Diagonalizing active-space HBar in the CAS... ", end='')
+        _t0 = time.time()
+        cisolver.diagonalize_hamiltonian()
+        print(f"   {time.time() - _t0} seconds")
+
+        self.relaxation_energy = cisolver.total_energy[0] + e_scalar
+        self.total_energy_relaxed = self.total_energy + self.relaxation_energy
+
+        print("")
+        print("    Calculation Summary:")
+        print("    --------------------")
+        print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+        print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
+        print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy))
+        print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed))
+
 
     def print_amplitudes(self):
 

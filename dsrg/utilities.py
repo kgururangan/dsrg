@@ -3,6 +3,26 @@ import psutil
 import numpy as np
 import subprocess
 
+def semicanonicalize_active(hbar_act, ref):
+    def _rotate_1(U, F):
+        return np.einsum("ij,ip,jq->pq", F, np.conj(U), U, optimize=True)
+
+    def _rotate_2s(U, V):
+        return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(U), np.conj(U), U, U, optimize=True)
+
+    def _rotate_2(Ua, Ub, V):
+        return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(Ua), np.conj(Ub), Ua, Ub, optimize=True)
+
+    a = ref.orbspace['active_alpha']
+    A = ref.orbspace['active_beta']
+    # semi-canonicalize 1- and 2-body integrals
+    hbar_act['a'] = _rotate_1(ref.U['a'][a, a], hbar_act['a'])
+    hbar_act['b'] = _rotate_1(ref.U['b'][A, A], hbar_act['b'])
+    hbar_act['aa'] = _rotate_2s(ref.U['a'][a, a], hbar_act['aa'])
+    hbar_act['ab'] = _rotate_2(ref.U['a'][a, a], ref.U['b'][A, A], hbar_act['ab'])
+    hbar_act['bb'] = _rotate_2s(ref.U['b'][A, A], hbar_act['bb'])
+    return hbar_act
+
 def flatten_dict_to_vector(d):
     return np.concatenate([v.ravel() for v in d.values()])
 
