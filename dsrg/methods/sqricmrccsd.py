@@ -1,8 +1,9 @@
 import time
 import numpy as np
 from dsrg.utilities import regularized_denominator
-from dsrg.wicked_contractions.sqricmrccsd_contractions import *
 
+from dsrg.wicked_contractions.sqricmrccsd_contractions import *
+from dsrg.wicked_contractions.sqricmrccsd_hbar_active import *
 
 def build_denominators(s, eps_a, eps_b, ref):
     n = np.newaxis
@@ -210,3 +211,39 @@ def recursive_commutator(hamiltonian, T, ref, herm, max_ncomm):
             o[key] = np.zeros_like(o_old[key])
 
     return hbar
+
+
+def compute_hbar_active(hamiltonian, T, ref, herm):
+    # Slicing
+    a = ref.orbspace['active_alpha']
+    A = ref.orbspace['active_beta']
+
+    # Initial value for the residual (0 commutators)
+    X = {'a': ref.F['a'][a, a].copy(),
+         'b': ref.F['b'][A, A].copy(),
+         'aa': 0.25 * ref.V['aa'][a, a, a, a].copy(),
+         'ab': ref.V['ab'][a, A, a, A].copy(),
+         'bb': 0.25 * ref.V['bb'][A, A, A, A].copy()}
+
+    # 1-body
+    _t0 = time.time()
+    X = Hbar_ncomm1_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = Hbar_ncomm2_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    # print(f"time for onebody {time.time() - _t0}")
+    # 2-body
+    _t0 = time.time()
+    X = Hbar_ncomm1_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = Hbar_ncomm2_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    # print(f"time for twobody {time.time() - _t0}")
+    # antisymmetrize twobody
+    X['aa'] -= X['aa'].transpose(1, 0, 2, 3)
+    X['aa'] -= X['aa'].transpose(0, 1, 3, 2)
+    X['bb'] -= X['bb'].transpose(1, 0, 2, 3)
+    X['bb'] -= X['bb'].transpose(0, 1, 3, 2)
+    if herm:
+        X['a'] += X['a'].T.conj()
+        X['b'] += X['b'].T.conj()
+        X['aa'] += X['aa'].transpose(2, 3, 0, 1).conj()
+        X['ab'] += X['ab'].transpose(2, 3, 0, 1).conj()
+        X['bb'] += X['bb'].transpose(2, 3, 0, 1).conj()
+    return X
