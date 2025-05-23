@@ -224,9 +224,12 @@ class DSRG:
                 o[key] = np.zeros_like(o_old[key])
         return ncomm, resid
 
-    def diagonalize_hbar(self, herm):
+    def diagonalize_hbar(self, herm, state_index=[0]):
 
         print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
+
+        self.relaxation_energy = np.zeros(len(state_index))
+        self.total_energy_relaxed = np.zeros(len(state_index))
 
         # Slicing
         a = self.ref.orbspace['active_alpha']
@@ -241,12 +244,10 @@ class DSRG:
         print(f"    Denormal order active HBar integrals")
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
+        # Semicanonicalize the active-space HBar integrals
         print(f"    Semicanonicalize denormal-ordered active HBar integrals")
         hbar_act = semicanonicalize_active(hbar_act, self.ref)
         # Diagonalize Hamiltonian in the CAS space using fcipy
-        #
-        # Get a CI solver
-        #
         print(">> WARNING: ASSUMING MULT = 1 HERE <<")
         cisolver = CI(CI_system(self.ref.cas[0], self.ref.cas[1], 1, 0),
                       hbar_act['a'], hbar_act['ab'],
@@ -255,17 +256,33 @@ class DSRG:
         print("    Diagonalizing active-space HBar in the CAS")
         cisolver.diagonalize_hamiltonian()
 
-        self.relaxation_energy = cisolver.total_energy[0] + e_scalar
-        self.total_energy_relaxed = self.total_energy + self.relaxation_energy
+        for i, istate in enumerate(state_index):
+            # Find the root in HBar CI problem that corresponds to the initial CASSCF/CASCI state
+            overlap = np.einsum("p,pq->q", self.ref.cas_ci_coeff[i], cisolver.coef, optimize=True)
+            idx = np.argmax(np.abs(overlap))
+            #
+            idx = i
 
-        print("")
-        print("    Calculation Summary:")
-        print("    --------------------")
-        print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        print("    Unrelaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy))
-        print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy))
-        print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed))
+            self.relaxation_energy[i] = cisolver.total_energy[idx] + e_scalar
+            self.total_energy_relaxed[i] = self.total_energy + self.relaxation_energy[i]
 
+            if i == 0:
+                print("")
+                print(f"    Calculation Summary: State {i}")
+                print("    ------------------------------------")
+                print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+                print("    Unrelaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy))
+                print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
+                print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
+                cisolver.print_ci_vector(state=i, prtol=0.19)
+            else:
+                print("")
+                print(f"    Calculation Summary: State {i}")
+                print("    ------------------------------------")
+                print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
+                print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[i] - self.total_energy_relaxed[0]))
+                print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
+                cisolver.print_ci_vector(state=i, prtol=0.19)
 
     def print_amplitudes(self):
 
@@ -516,9 +533,13 @@ class RICMRCC:
         print("")
         
 
-    def diagonalize_hbar(self, herm):
-        # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
+    def diagonalize_hbar(self, herm, state_index=[0]):
         print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
+
+        self.relaxation_energy = np.zeros(len(state_index))
+        self.total_energy_relaxed = np.zeros(len(state_index))
+
+        # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
         print("    Building 1- and 2-body components of HBar in the active space... ", end='')
         _t0 = time.time()
         hbar_act = self.build_hbar_active(self.hamiltonian, self.T, self.ref, self.herm)
@@ -528,12 +549,10 @@ class RICMRCC:
         print(f"    Denormal order active HBar integrals...")
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
+        # Semicanonicalize the active-space integrals
         print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
         hbar_act = semicanonicalize_active(hbar_act, self.ref)
         # Diagonalize Hamiltonian in the CAS space using fcipy
-        #
-        # Get a CI solver
-        #
         print("\n    >> WARNING: ASSUMING MULT = 1 HERE <<")
         cisolver = CI(CI_system(self.ref.cas[0], self.ref.cas[1], 1, 0),
                       hbar_act['a'], hbar_act['ab'],
@@ -544,16 +563,33 @@ class RICMRCC:
         cisolver.diagonalize_hamiltonian()
         print(f"   {time.time() - _t0} seconds")
 
-        self.relaxation_energy = cisolver.total_energy[0] + e_scalar
-        self.total_energy_relaxed = self.total_energy + self.relaxation_energy
+        for i, istate in enumerate(state_index):
+            # Find the root in HBar CI problem that corresponds to the initial CASSCF/CASCI state
+            overlap = np.einsum("p,pq->q", self.ref.cas_ci_coeff[i], cisolver.coef, optimize=True)
+            idx = np.argmax(np.abs(overlap))
+            #
+            idx = i
 
-        print("")
-        print("    Calculation Summary:")
-        print("    --------------------")
-        print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-        print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy))
-        print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed))
+            self.relaxation_energy[i] = cisolver.total_energy[idx] + e_scalar
+            self.total_energy_relaxed[i] = self.total_energy + self.relaxation_energy[i]
+
+            if i == 0:
+                print("")
+                print(f"    Calculation Summary: State {i}")
+                print("    ------------------------------------")
+                print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+                print("    Unrelaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy))
+                print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
+                print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
+                cisolver.print_ci_vector(state=i, prtol=0.19)
+            else:
+                print("")
+                print(f"    Calculation Summary: State {i}")
+                print("    ------------------------------------")
+                print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
+                print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[i] - self.total_energy_relaxed[0]))
+                print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
+                cisolver.print_ci_vector(state=i, prtol=0.19)
 
 
     def print_amplitudes(self):

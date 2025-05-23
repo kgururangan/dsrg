@@ -1,10 +1,19 @@
 import time
 import numpy as np
 from dsrg.pyscf_tools import make_casci_rdm123s, make_casci_rdm123
+try:
+    from fcipy.driver import Driver as CI
+    from fcipy.system import System as CI_system
+except ImportError:
+    print("FCIpy not installed - you will not be able to run relaxed or excited-state calculatiosn!")
+    pass
 
+# [TODO]: Perform an initial CASCI calculation using the CASSCF MOs taken from PySCF and save the
+#         eigenvalues (energies) and eigenvectors (CI coeffs). This will allow us to have all CI
+#         amplitudes ordered in a consistent fashion, which will faciliate taking overlaps.
 class Reference:
     
-    def __init__(self, mc, mf, mo_coeff=None, nfrozen=0, verbose=False):
+    def __init__(self, mc, mf, mo_coeff=None, nfrozen=0, state_index=[0], sa_weights=np.array([1.0]), verbose=False):
         self.mc = mc
         self.mf = mf
         self.nfrozen = nfrozen
@@ -19,6 +28,11 @@ class Reference:
         self.nact_beta = self.cas[1]
         self.nvirt_alpha = self.norb - self.nact_alpha - self.ncore_alpha
         self.nvirt_beta = self.norb - self.nact_beta - self.ncore_beta
+        #
+        self.sa_weights = sa_weights
+        self.state_index = state_index
+        self.cas_state_energies = np.zeros(len(self.state_index))
+        self.cas_ci_coeff = [None for _ in range(len(self.state_index))]
         #
         if mo_coeff is None:
             self.mo_coeff = self.mf.mo_coeff
@@ -52,18 +66,25 @@ class Reference:
         }
         #
         self.verbose = verbose
+        #
+        self.rdms = None
 
     def kernel(self, semi=True):
         if self.verbose: print("Spin-Integrated CAS Reference")
         if self.verbose: print(f"Semicanonicalization = {semi}")
-        # first make the hcore/V integrals in HF basis
+        # first make the hcore/V integrals in HF or CASSCF basis
         tic = time.time()
         self.make_hf_integrals()
         toc = time.time()
         if self.verbose: print(f"HF integral construction... {toc - tic}s")
+        # # diagonalize the Hamiltonian in the CAS space (this will recover the CASSCF/CASCI energies)
+        # tic = time.time()
+        # self.diagonalize_cas_hamiltonian()
+        # toc = time.time()
+        # if self.verbose: print(f"Hamiltonian CAS diagonalization... {toc - tic}s")
         # get RDMs from CAS wave function
         tic = time.time()
-        self.make_rdms()
+        self.make_state_avg_rdms()
         toc = time.time()
         if self.verbose: print(f"RDM construction... {toc - tic}s")
         # make generalized Fock operator
@@ -84,7 +105,7 @@ class Reference:
         toc = time.time()
         if self.verbose: print(f"Make cumulants... {toc - tic}s")
         # check that 1- and 2-RDMs in semicanonical basis is correct by computing CAS energy
-        self.compute_cas_energy()
+        self.compute_sa_cas_energy()
         #
         self.compute_cas_energy_from_fock()
         #
@@ -101,9 +122,37 @@ class Reference:
             if self.verbose: print("All is well!")
         except AssertionError:
             print("CAS energy computed via RDMs does not match!")
+
+    # def diagonalize_cas_hamiltonian(self):
+    #     # Diagonalize Hamiltonian in the CAS space using fcipy
+    #     print(">> WARNING: ASSUMING MULT = 1 HERE <<")
+    #     cisolver = CI(CI_system(self.cas[0], self.cas[1], 1, 0),
+    #                   self.F['a'], self.V['ab'],
+    #                   herm=True)
+    #     cisolver.load_determinants(target_irrep=None)
+    #     cisolver.diagonalize_hamiltonian()
         
-    def make_rdms(self):
-        self.rdms = make_casci_rdm123s(self.mc, self.cas[1], self.nelcas_alpha, self.nelcas_beta)
+    def make_state_avg_rdms(self):
+        for i, istate in enumerate(self.state_index):
+
+            if isinstance(self.mc.ci, list):
+                coeff = self.mc.ci[istate]
+            else:
+                coeff = self.mc.ci
+
+            rdms_i = make_casci_rdm123s(coeff, self.cas[1], self.nelcas_alpha, self.nelcas_beta)
+
+            self.cas_state_energies[i] = self.compute_cas_state_energy(rdms_i)
+            self.cas_ci_coeff[i] = coeff.flatten() # [a(bbb...),a(bbb...),...]
+
+            print(f"CAS State {istate} Energy: {self.cas_state_energies[i]}")
+            if self.rdms is None:
+                self.rdms = {key: None for key in rdms_i}
+                for key, value in rdms_i.items():
+                    self.rdms[key] = self.sa_weights[i] * value
+            else:
+                for key, value in rdms_i.items():
+                    self.rdms[key] += self.sa_weights[i] * value
 
     def make_cumulants(self):
 
@@ -238,8 +287,6 @@ class Reference:
                     + np.einsum("upvq,uv->pq", self.V['ab'][a, :, a, :], self.rdms['a'])
         )
         self.F = {'a': fock_a, 'b': fock_b}
-        #fock = np.einsum("pi,pq,qj->ij", self.mc.mo_coeff, self.mc.get_fock(), self.mc.mo_coeff)
-        #self.F = {'a': fock, 'b': fock}
         
     def get_semicanonicalizer(self):
 
@@ -310,13 +357,37 @@ class Reference:
         self.rdms['abb'] = _rotate_3c(self.U['a'][a, a], self.U['b'][A, A], self.rdms['abb'].copy())
         self.rdms['bbb'] = _rotate_3s(self.U['b'][A, A], self.rdms['bbb'].copy())
 
-    def compute_cas_energy(self):
+    def compute_cas_state_energy(self, rdms):
         c = self.orbspace['core_alpha']
         C = self.orbspace['core_beta']
         a = self.orbspace['active_alpha']
         A = self.orbspace['active_beta']
         e_test = (
             np.einsum("mm->", self.Z['a'][c, c]) 
+          + np.einsum("mm->", self.Z['b'][C, C])
+          + np.einsum("uv,uv->", self.Z['a'][a, a], rdms['a'])
+          + np.einsum("uv,uv->", self.Z['b'][A, A], rdms['b'])
+          + 0.5 * np.einsum("mnmn->", self.V['aa'][c, c, c, c])
+          + np.einsum("mnmn->", self.V['ab'][c, C, c, C])
+          + 0.5 * np.einsum("mnmn->", self.V['bb'][C, C, C, C])
+          + np.einsum("mumv,uv->", self.V['aa'][c, a, c, a], rdms['a'])
+          + np.einsum("umvm,uv->", self.V['ab'][a, C, a, C], rdms['a'])
+          + np.einsum("mumv,uv->", self.V['ab'][c, A, c, A], rdms['b'])
+          + np.einsum("mumv,uv->", self.V['bb'][C, A, C, A], rdms['b'])
+          + 0.25 * np.einsum("uvxy,uvxy->", self.V['aa'][a, a, a, a], rdms['aa'])
+          + np.einsum("uvxy,uvxy->", self.V['ab'][a, A, a, A], rdms['ab'])
+          + 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], rdms['bb'])
+          + self.nuclear_repulsion
+        )
+        return e_test
+
+    def compute_sa_cas_energy(self):
+        c = self.orbspace['core_alpha']
+        C = self.orbspace['core_beta']
+        a = self.orbspace['active_alpha']
+        A = self.orbspace['active_beta']
+        e_test = (
+            np.einsum("mm->", self.Z['a'][c, c])
           + np.einsum("mm->", self.Z['b'][C, C])
           + np.einsum("uv,uv->", self.Z['a'][a, a], self.rdms['a'])
           + np.einsum("uv,uv->", self.Z['b'][A, A], self.rdms['b'])
@@ -332,6 +403,9 @@ class Reference:
           + 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], self.rdms['bb'])
           + self.nuclear_repulsion
         )
+
+        e_test2 = np.dot(self.sa_weights, self.cas_state_energies)
+        assert np.allclose(e_test, e_test2, atol=1.0e-08, rtol=1.0e-08)
         self.e_cas = e_test
 
     def compute_cas_energy_from_fock(self):
@@ -340,7 +414,7 @@ class Reference:
         a = self.orbspace['active_alpha']
         A = self.orbspace['active_beta']
         e_test = (
-            np.einsum("mm->", self.F['a'][c, c]) 
+            np.einsum("mm->", self.F['a'][c, c])
           + np.einsum("mm->", self.F['b'][C, C])
           + np.einsum("uv,uv->", self.F['a'][a, a], self.rdms['a'])
           + np.einsum("uv,uv->", self.F['b'][A, A], self.rdms['b'])

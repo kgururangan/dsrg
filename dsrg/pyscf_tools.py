@@ -1,10 +1,10 @@
 import numpy as np
 from pyscf import gto, scf, mcscf, fci
 
-def make_casci_rdm123s(mc, norb_cas, nelcas_a, nelcas_b):
+def make_casci_rdm123s(ci_coeff, norb_cas, nelcas_a, nelcas_b):
 
     #(dm1a, dm1b), (dm2aa, dm2ab, dm2bb) = fci.direct_uhf.make_rdm12s(mc.ci, cas[1], cas[0], reorder=True)
-    (dm1a, dm1b), (dm2aa, dm2ab, dm2bb), (dm3aaa, dm3aab, dm3abb, dm3bbb) = fci.direct_spin1.make_rdm123s(mc.ci, norb_cas, (nelcas_a, nelcas_b), reorder=True)
+    (dm1a, dm1b), (dm2aa, dm2ab, dm2bb), (dm3aaa, dm3aab, dm3abb, dm3bbb) = fci.direct_spin1.make_rdm123s(ci_coeff, norb_cas, (nelcas_a, nelcas_b), reorder=True)
     # [WARNING]: 2-RDMs and 3-RDMs from PySCF must be transposed from Chemist to Physics notation
     dm2aa = dm2aa.transpose(0, 2, 1, 3)
     dm2ab = dm2ab.transpose(0, 2, 1, 3)
