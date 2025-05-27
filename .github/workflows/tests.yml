@@ -40,7 +40,7 @@ jobs:
 
       - name: Install FCIpy
         run: |
-          git clone https://github.com/kgururangan/fcipy.git fcipy
+          git clone https://github.com/kgururangan/fcipy.git
           cd fcipy/lib
           make -j2
           pip install -e fcipy
