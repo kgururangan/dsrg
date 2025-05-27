@@ -40,6 +40,7 @@ def test_sqricmrccsd_approx_1():
     # Run DSRG
     driver = RICMRCC(ref)
     driver.run_ricmrcc(method='sqricmrccsd_approx', s=1.0, herm=False)
+    driver.diagonalize_hbar(herm=False)
 
 if __name__ == "__main__":
     test_sqricmrccsd_approx_1()

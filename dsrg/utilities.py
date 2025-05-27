@@ -1,7 +1,6 @@
 import os
 import psutil
 import numpy as np
-import subprocess
 
 def semicanonicalize_active(hbar_act, ref):
     def _rotate_1(U, F):
@@ -88,10 +87,3 @@ def remove_file(filePath):
     except OSError:
         pass
     return
-
-def get_git_commit_id():
-    try:
-        commit_id = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).strip().decode('utf-8')
-        return commit_id
-    except subprocess.CalledProcessError:
-        return "N/A"

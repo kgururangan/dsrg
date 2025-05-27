@@ -39,7 +39,7 @@ def test_mrdsrg_ldsrg2_n2():
     driver = DSRG(ref)
     # driver.run_ldsrg2(s=0.5, herm=True, max_ncomm=12)
     driver.run_dsrg(method='ldsrg2', s=0.5, herm=True)
-
+    driver.diagonalize_hbar(herm=True)
 
     #
     # Check the results

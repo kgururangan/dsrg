@@ -40,7 +40,8 @@ def test_ricmrccsd_approx_1():
     # Run DSRG
     driver = RICMRCC(ref)
     driver.run_ricmrcc(method='ricmrccsd_approx', s=1.0, herm=False)
-    
+    driver.diagonalize_hbar(herm=False)
+
     #
     # Check the results
     # Source: ric-MRCCSD Results from Robin's code (ricmrcc-publish) 

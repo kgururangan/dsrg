@@ -1,5 +1,9 @@
 import numpy as np
-from pyscf import gto, scf, mcscf, fci
+from pyscf import fci
+from pyscf import symm
+
+def get_pyscf_orbsym(molecule, mo_coeff):
+    return [x.upper() for x in symm.label_orb_symm(molecule, molecule.irrep_name, molecule.symm_orb, mo_coeff)]
 
 def make_casci_rdm123s(ci_coeff, norb_cas, nelcas_a, nelcas_b):
 

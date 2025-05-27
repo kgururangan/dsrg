@@ -44,6 +44,7 @@ def test_mrdsrg_ldsrg2_hf():
 
     driver = DSRG(ref)
     driver.run_dsrg(method='ldsrg2', s=2.0, herm=True)
+    driver.diagonalize_hbar(herm=True)
 
     #
     # Check the results
