@@ -40,9 +40,10 @@ jobs:
 
       - name: Install FCIpy
         run: |
-          git clone https://github.com/kgururangan/fcipy.git
-          cd fcipy/lib
+          git clone https://github.com/kgururangan/fcipy.git fcipy
+          pushd fcipy/fcipy/lib
           make -j2
+          popd
           pip install -e fcipy
 
       - name: Install dsrg
