@@ -111,39 +111,29 @@ def compute_residual(hamiltonian, T, ref, herm):
          'ab': ref.V['ab'][p, P, h, H].copy(),
          'bb': 0.25 * ref.V['bb'][P, P, H, H].copy()}
     
-    l_aa = ref.lambdas['aa'].copy()
-    l_ab = ref.lambdas['ab'].copy()
-    l_bb = ref.lambdas['bb'].copy()
-    
     # 0-body (energy)
-    _t0 = time.time()
+    # _t0 = time.time()
     X = H_T_ncomm1_nbody0(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
     X = H_T_ncomm2_nbody0(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
     # print(f"time for zerobody {time.time() - _t0}")
     if herm:
         X['0'] *= 2.0
     # 1-body
-    _t0 = time.time()
+    # _t0 = time.time()
     X = H_T_ncomm1_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    ref.lambdas['aa'] *= 0.0
-    ref.lambdas['ab'] *= 0.0
-    ref.lambdas['bb'] *= 0.0
     X = H_T_ncomm2_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    ref.lambdas['aa'] = l_aa.copy()
-    ref.lambdas['ab'] = l_ab.copy()
-    ref.lambdas['bb'] = l_bb.copy()
     # print(f"time for onebody {time.time() - _t0}")
     # 2-body
-    _t0 = time.time()
+    # _t0 = time.time()
     X = H_T_ncomm1_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    ref.lambdas['aa'] *= 0.0
-    ref.lambdas['ab'] *= 0.0
-    ref.lambdas['bb'] *= 0.0
     X = H_T_ncomm2_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-    ref.lambdas['aa'] = l_aa.copy()
-    ref.lambdas['ab'] = l_ab.copy()
-    ref.lambdas['bb'] = l_bb.copy()
     # print(f"time for twobody {time.time() - _t0}")
+    # four-virtual blocks
+    v = ref.orbspace['virt_alpha']
+    V = ref.orbspace['virt_beta']
+    X['aa'] = vvvv_t2aa_terms(X['aa'], hamiltonian['aa'][v, v, v, v], T, ref.orbspace)
+    X['bb'] = vvvv_t2bb_terms(X['bb'], hamiltonian['bb'][V, V, V, V], T, ref.orbspace)
+    X['ab'] = vvvv_t2ab_terms(X['ab'], hamiltonian['ab'][v, V, v, V], T, ref.orbspace)
     # antisymmetrize twobody
     X['aa'] -= X['aa'].transpose(1, 0, 2, 3)
     X['aa'] -= X['aa'].transpose(0, 1, 3, 2)

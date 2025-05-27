@@ -129,7 +129,7 @@ class Reference:
     def get_state_indices_in_spectrum(self):
         overlap = np.dot(self.ci_coeff_init.T, self.cisolver.coef)
         # self.state_index = np.argmax(np.abs(overlap), axis=1)
-        return np.argmax(np.abs(overlap), axis=1)
+        return np.argmax(np.abs(overlap), axis=1), overlap
 
     def initialize_cisolver(self):
         # Important to copy one- and two-electron integrals - take only hole part (core + active)
@@ -152,7 +152,6 @@ class Reference:
             point_group=pg, orbital_symmetry=orbsym,
         )
         self.cisolver.load_determinants(target_irrep=None)
-        # self.nstates = self.cisolver.ndet
 
     def diagonalize_cas_hamiltonian(self):
         self.ci_coeff_init = np.zeros((self.cisolver.ndet, len(self.sa_weights)))
@@ -165,11 +164,11 @@ class Reference:
         self.cisolver.build_hamiltonian(herm=True)
         self.cisolver.diagonalize_hamiltonian(herm=True)
 
-        self.get_state_indices_in_spectrum()
+        state_index, _ = self.get_state_indices_in_spectrum()
 
         print("   State Energies from CAS Diagonalization")
         print("   ----------------------------------------")
-        for i, istate in enumerate(self.get_state_indices_in_spectrum()):
+        for i, istate in enumerate(state_index):
             self.ci_coeff_init[:, i] = self.cisolver.coef[:, istate].copy()
             print(f"   State {istate}: Energy = {self.cisolver.total_energy[istate]}")
             self.cisolver.print_ci_vector(state=istate, prtol=0.19)
@@ -229,7 +228,9 @@ class Reference:
 
     def make_state_avg_rdms(self):
 
-        for i, (istate, w) in enumerate(zip(self.get_state_indices_in_spectrum(), self.sa_weights)):
+        state_index, _ = self.get_state_indices_in_spectrum()
+
+        for i, (istate, w) in enumerate(zip(state_index, self.sa_weights)):
             # Use FCIpy to get 1-, 2-, and 3-RDMs
             rdms_i = self.cisolver.compute_rdm123s(istate)
             # Compute CAS state energies using RDMs

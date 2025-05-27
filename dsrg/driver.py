@@ -258,55 +258,26 @@ class DSRG:
         self.relaxation_energy = self.ref.cisolver.state_eigval.real + e_scalar
         self.total_energy_relaxed = self.total_energy + self.relaxation_energy
 
-        state_index = self.ref.get_state_indices_in_spectrum()
+        state_index, overlap = self.ref.get_state_indices_in_spectrum()
         i_ground = state_index[0]
 
-        # for i in range(self.ref.nstates):
-        #
-        #     self.relaxation_energy[i] = self.ref.cisolver.state_eigval[i] + e_scalar
-        #     self.total_energy_relaxed[i] = self.total_energy + self.relaxation_energy[i]
-        #     print("")
-        #     print(f"    Calculation Summary: State {i}")
-        #     print("    ------------------------------------")
-        #     if i == 0:
-        #         print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        #         print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-        #     else:
-        #         print("    Excitation Energy: {: 20.12f}".format(
-        #             self.total_energy_relaxed[i] - self.total_energy_relaxed[0]))
-        #     print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
-        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
-        #     self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
-
-        # for i, (e_t, e_r) in enumerate(zip(self.total_energy_relaxed, self.relaxation_energy)):
-        #
-        #     print("")
-        #     print(f"    Calculation Summary: State {i}")
-        #     print("    ------------------------------------")
-        #     if i == 0:
-        #         print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        #         print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-        #     else:
-        #         print("    Excitation Energy: {: 20.12f}".format(e_t - self.total_energy_relaxed[0]))
-        #     print("    Relaxation Energy: {: 20.12f}".format(e_r))
-        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(e_t))
-        #     self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
-
         for i, istate in enumerate(state_index):
-            ground_state = False
+            # ground_state = False
             print("")
-            print(f"    Calculation Summary: State {istate}")
-            if istate == i_ground:
-                ground_state = True
-                print("    [Ground State]")
+            print(f"    Calculation Summary: State {i}")
+            print(f"    initial root {i} -> relaxed root {istate}")
+            print(f"    overlap = {overlap[i, istate]}")
+            # if istate == i_ground:
+            #     ground_state = True
+            #     print("    [Ground State]")
             print("    ------------------------------------")
-            if ground_state:
-                print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-                print("    Unrelaxed MR-LDSRG Total Energy: {: 20.12f}".format(self.total_energy))
-            else:
-                print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[istate] - self.total_energy_relaxed[i_ground]))
+            # if ground_state:
+            #     print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+            #     print("    Unrelaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy))
+            # else:
+            #     print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[istate] - self.total_energy_relaxed[i_ground]))
             print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
-            print("    Relaxed MR-LDSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
+            print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
 
     def print_amplitudes(self):
@@ -572,34 +543,25 @@ class RICMRCC:
         # Diagonalize Hamiltonian in the CAS space using fcipy
         self.ref.cisolver.e1int = hbar_act['a'].copy()
         self.ref.cisolver.e2int = hbar_act['ab'].copy()
-        self.ref.cisolver.run_ci(self.ref.nstates, opt=True, herm=herm)
-        # self.ref.cisolver.build_hamiltonian(herm=herm)
-        # self.ref.cisolver.diagonalize_hamiltonian(herm=herm)
-
-        # self.relaxation_energy = self.ref.cisolver.state_eigval.real + e_scalar
-        # self.total_energy_relaxed = self.total_energy + self.relaxation_energy
         #
-        # state_index = self.ref.get_state_indices_in_spectrum()
+        # self.ref.cisolver.run_ci(self.ref.nstates, opt=True, herm=herm)
+        #
+        self.ref.cisolver.build_hamiltonian(herm=herm)
+        self.ref.cisolver.diagonalize_hamiltonian(herm=herm)
+
+        self.relaxation_energy = self.ref.cisolver.state_eigval.real + e_scalar
+        self.total_energy_relaxed = self.total_energy + self.relaxation_energy
+
+        state_index, overlap = self.ref.get_state_indices_in_spectrum()
         # i_ground = state_index[0]
 
-        for i in range(self.ref.nstates):
+        # overlap = np.dot(self.ref.ci_coeff_init.T, self.ref.cisolver.coef)
+        # print(state_index)
 
-            self.relaxation_energy[i] = self.ref.cisolver.state_eigval[i] + e_scalar
-            self.total_energy_relaxed[i] = self.total_energy + self.relaxation_energy[i]
-            print("")
-            print(f"    Calculation Summary: State {i}")
-            print("    ------------------------------------")
-            if i == 0:
-                print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-                print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-            else:
-                print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[i] - self.total_energy_relaxed[0]))
-            print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
-            print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
-            self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
-
-        # for i, (e_t, e_r) in enumerate(zip(self.total_energy_relaxed, self.relaxation_energy)):
+        # for i in range(self.ref.nstates):
         #
+        #     self.relaxation_energy[i] = self.ref.cisolver.state_eigval[i] + e_scalar
+        #     self.total_energy_relaxed[i] = self.total_energy + self.relaxation_energy[i]
         #     print("")
         #     print(f"    Calculation Summary: State {i}")
         #     print("    ------------------------------------")
@@ -607,27 +569,53 @@ class RICMRCC:
         #         print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
         #         print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
         #     else:
-        #         print("    Excitation Energy: {: 20.12f}".format(e_t - self.total_energy_relaxed[0]))
-        #     print("    Relaxation Energy: {: 20.12f}".format(e_r))
-        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(e_t))
+        #         print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[i] - self.total_energy_relaxed[0]))
+        #     print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
+        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
         #     self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
 
-        # for i, istate in enumerate(state_index):
-        #     ground_state = False
+        # for i in range(overlap.shape[0]):
+        #     print(f"State {i}")
+        #     for j in range(overlap.shape[1]):
+        #         print(f"S[{i}, {j}] = {overlap[i, j]}")
         #     print("")
-        #     print(f"    Calculation Summary: State {istate}")
-        #     if istate == i_ground:
-        #         ground_state = True
-        #         print("    [Ground State]")
+
+        # for i, (e_t, e_r) in enumerate(zip(self.total_energy_relaxed, self.relaxation_energy)):
+        #     idx = np.argsort(overlap, axis=1)
+        #     print("")
+        #     print(f"    Calculation Summary: State {i}")
         #     print("    ------------------------------------")
-        #     if ground_state:
-        #         print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        #         print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-        #     else:
-        #         print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[istate] - self.total_energy_relaxed[i_ground]))
-        #     print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
-        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
-        #     self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
+        #     # if i == 0:
+        #     #     print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+        #     #     print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
+        #     # else:
+        #     #     print("    Excitation Energy: {: 20.12f}".format(e_t - self.total_energy_relaxed[0]))
+        #     print("    Relaxation Energy: {: 20.12f}".format(e_r))
+        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(e_t))
+        #     print("    State Overlaps:")
+        #     for j in range(5):
+        #         print(f"       [{j + 1}]     {idx[j]}    {overlap[idx[j], i]}")
+        #
+        #     self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
+
+        for i, istate in enumerate(state_index):
+            # ground_state = False
+            print("")
+            print(f"    Calculation Summary: State {i}")
+            print(f"    initial root {i} -> relaxed root {istate}")
+            print(f"    overlap = {overlap[i, istate]}")
+            # if istate == i_ground:
+            #     ground_state = True
+            #     print("    [Ground State]")
+            print("    ------------------------------------")
+            # if ground_state:
+            #     print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
+            #     print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
+            # else:
+            #     print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[istate] - self.total_energy_relaxed[i_ground]))
+            print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
+            print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
+            self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
 
 
     def print_amplitudes(self):
