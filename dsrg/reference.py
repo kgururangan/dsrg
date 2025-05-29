@@ -124,7 +124,8 @@ class Reference:
             assert np.allclose(self.e_cas_from_fock, self.mc.e_tot)
             if self.verbose: print("    >> All is well! :)\n")
         except AssertionError:
-            print("    >> State-averaged CAS energy computed via RDMs does not match!\n")
+            raise ValueError("State-averaged CAS energy computed via RDMs does not match!")
+            # print("    >> State-averaged CAS energy computed via RDMs does not match!\n")
 
     def get_state_indices_in_spectrum(self):
         overlap = np.dot(self.ci_coeff_init.T, self.cisolver.coef)
@@ -144,7 +145,7 @@ class Reference:
         nfroz = self.ncore_alpha
         ndelete = 0
         mult = 1
-        pg = self.mf.mol.symmetry
+        pg = self.mf.mol.groupname
         orbsym = get_pyscf_orbsym(self.mf.mol, self.mo_coeff)
         self.cisolver = CI.from_custom(
             nel, norb, nfroz, ndelete, mult,
@@ -244,6 +245,15 @@ class Reference:
             else:
                 for key, value in rdms_i.items():
                     self.rdms[key] += w * value
+
+            # Print out natural occupancies from 1-RDM
+            occ_a, _ = np.linalg.eigh(rdms_i['a'])
+            occ_b, _ = np.linalg.eigh(rdms_i['b'])
+            print(f"\n    Natural occupancies of CAS state {i}")
+            print("    -------------------------------------")
+            for j, (na, nb) in enumerate(zip(occ_a, occ_b)):
+                print(f"    CAS orbital {j + 1}:  {na + nb:.5f}")
+        print('')
 
     def make_cumulants(self):
 
