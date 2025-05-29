@@ -125,7 +125,6 @@ class Reference:
             if self.verbose: print("    >> All is well! :)\n")
         except AssertionError:
             raise ValueError("State-averaged CAS energy computed via RDMs does not match!")
-            # print("    >> State-averaged CAS energy computed via RDMs does not match!\n")
 
     def get_state_indices_in_spectrum(self):
         overlap = np.dot(self.ci_coeff_init.T, self.cisolver.coef)
