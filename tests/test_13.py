@@ -1,0 +1,72 @@
+import numpy as np
+from pyscf import gto, scf, mcscf
+from dsrg.reference import Reference
+from dsrg.driver import RICMRCC
+
+RTOL = 1.0e-06
+ATOL = 1.0e-06
+
+def test_ricmrccsdt1_approx_1():
+
+    mol = gto.M(
+        atom = '''
+            N  0.0000  0.0000  0.000
+            N  0.0000  0.0000  1.100''',
+        basis = '6-31g',
+        spin=0,
+        charge=0,
+        symmetry="D2H",
+    )
+    mol.verbose = 4
+
+    # Perform RHF calculation
+    mf = scf.RHF(mol).run()
+    scf.rhf_symm.analyze(mf)
+    # Ag B1g, B2g, B3g, Au, B1u, B2u, B3u
+    # restricted_docc         [2,0,0,0,0,2,0,0]
+    # active                  [1,0,1,1,0,1,1,1]
+    # Perform CASCI calculation
+    mc = mcscf.CASSCF(mf, 6, 6)
+    ncore = {'Ag': 2, 'B1u': 2}
+    ncas = {'Ag': 1, 'B2g': 1, 'B3g': 1, 'B1u': 1, 'B2u': 1, 'B3u': 1}
+    mo = mcscf.sort_mo_by_irrep(mc, mf.mo_coeff, ncas, ncore)
+    mc.kernel(mo)
+    mc.analyze()
+
+    # Create the reference
+    ref = Reference(mc, mf, mo_coeff=mc.mo_coeff, nfrozen=0, verbose=True)
+    ref.kernel(semi=True)
+
+    # Run DSRG
+    driver = RICMRCC(ref)
+    driver.run_ricmrcc(method='ricmrccsdt1_approx', s=1.0, herm=False)
+    driver.diagonalize_hbar(herm=False)
+
+    #
+    # Check the results
+    #
+    # The ric-MRCCSDT-1 method is defined below
+    #
+    # Global approximations (applied in EVERY term):
+    # ---------------------------------------------
+    # :: lambda_4 = 0 everywhere
+    # :: T3 with >3 active indices are neglected everywhere
+    #
+    # Update equations
+    # ----------------
+    # (i) E <- E[ric-MRCCSD(a)] + [H, T3] + 1/2[[H, T1+T2], T3] + 1/2[[H, T3], T1+T2]
+    # (ii) R1 <- R1[ric-MRCCSD(a)] + [H, T3] + 1/2[[H, T1+T2], T3] + 1/2[[H, T3], T1+T2]
+    # (iii) R2 <- R2[ric-MRCCSD(a)] + [H, T3] + 1/2[[H, T1+T2], T3] + 1/2[[H, T3], T1+T2]
+    # (iv) T3 <- H3 * reg_denom, H3 = [H, T1+T2]
+    # Approximations made in (i) [approx1 = True]:
+    # :: nonlinear terms in which both T amplitudes carry >= 3 active indices are neglected
+    # Approximations made in (i) & (ii) [approx1 = True]:
+    # :: nonlinear terms in which both T amplitudes carry >= 1 active indices are neglected
+    assert np.isclose(driver.reference_energy, -109.015943955217224, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.correlation_energy, -0.090705989724, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy, -109.106649944788, rtol=RTOL, atol=ATOL)
+
+
+if __name__ == "__main__":
+    test_ricmrccsdt1_approx_1()
+

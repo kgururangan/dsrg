@@ -378,6 +378,10 @@ class RICMRCC:
             self._par['nbody_t'] = 2
             self._par['nbody_h'] = 2
             self._par['comm_approx'] = 2
+        elif method in ["ricmrccsdt1_approx"]:
+            self._par['nbody_t'] = 3
+            self._par['nbody_h'] = 3
+            self._par['comm_approx'] = 2
 
         if method.lower() not in MODULES:
             raise NotImplementedError(f"Method {method.upper()} not implemented!")
@@ -399,7 +403,11 @@ class RICMRCC:
                             'b': self.ref.F['b'],
                             'aa': self.ref.V['aa'],
                             'ab': self.ref.V['ab'], 
-                            'bb': self.ref.V['bb']}
+                            'bb': self.ref.V['bb'],
+                            'aaa': None,
+                            'aab': None,
+                            'abb': None,
+                            'bbb': None}
 
 
     def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05, diis_size=6, out_of_core=False):
