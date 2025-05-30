@@ -50,7 +50,7 @@ def test_ricmrccsdt1_approx_1():
     # Global approximations (applied in EVERY term):
     # ---------------------------------------------
     # :: lambda_4 = 0 everywhere
-    # :: T3 with >3 active indices are neglected everywhere
+    # :: T3 with >3 active indices are neglected in all double commutators
     #
     # Update equations
     # ----------------
@@ -58,13 +58,11 @@ def test_ricmrccsdt1_approx_1():
     # (ii) R1 <- R1[ric-MRCCSD(a)] + [H, T3] + 1/2[[H, T1+T2], T3] + 1/2[[H, T3], T1+T2]
     # (iii) R2 <- R2[ric-MRCCSD(a)] + [H, T3] + 1/2[[H, T1+T2], T3] + 1/2[[H, T3], T1+T2]
     # (iv) T3 <- H3 * reg_denom, H3 = [H, T1+T2]
-    # Approximations made in (i) [approx1 = True]:
-    # :: nonlinear terms in which both T amplitudes carry >= 3 active indices are neglected
     # Approximations made in (i) & (ii) [approx1 = True]:
     # :: nonlinear terms in which both T amplitudes carry >= 1 active indices are neglected
     assert np.isclose(driver.reference_energy, -109.015943955217224, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.correlation_energy, -0.090705989724, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.total_energy, -109.106649944788, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.correlation_energy, -0.090418138290, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy, -109.106362093354, rtol=RTOL, atol=ATOL)
 
 
 if __name__ == "__main__":
