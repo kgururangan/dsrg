@@ -403,11 +403,7 @@ class RICMRCC:
                             'b': self.ref.F['b'],
                             'aa': self.ref.V['aa'],
                             'ab': self.ref.V['ab'], 
-                            'bb': self.ref.V['bb'],
-                            'aaa': None,
-                            'aab': None,
-                            'abb': None,
-                            'bbb': None}
+                            'bb': self.ref.V['bb']}
 
 
     def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05, diis_size=6, out_of_core=False):
