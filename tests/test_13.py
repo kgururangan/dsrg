@@ -63,6 +63,7 @@ def test_ricmrccsdt1_approx_1():
     assert np.isclose(driver.reference_energy, -109.015943955217224, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.correlation_energy, -0.090418138290, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.total_energy, -109.106362093354, rtol=RTOL, atol=ATOL)
+    assert np.isclose(driver.total_energy_relaxed[0], -109.103288877731, rtol=RTOL, atol=ATOL)
 
 
 if __name__ == "__main__":
