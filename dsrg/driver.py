@@ -280,6 +280,35 @@ class DSRG:
             print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
 
+    def form_cumulants(self):
+
+        state_index, overlap = self.ref.get_state_indices_in_spectrum()
+
+        # Clear original RDMs
+        for key in self.ref.rdms.keys():
+            self.ref.rdms[key] *= 0.0
+
+        # Compute new state-averaged RDMs
+        for i, (istate, w) in enumerate(zip(state_index, self.ref.sa_weights)):
+            # Use FCIpy to get 1-, 2-, and 3-RDMs
+            rdms_i = self.ref.cisolver.compute_rdm123s(istate)
+            for key, value in rdms_i.items():
+                self.ref.rdms[key] += w * value
+
+        # Remake the cumulants
+        self.ref.make_cumulants()
+
+        # transpose?
+        # self.ref.gam1['a'] = self.ref.gam1['a'].T
+        # self.ref.eta1['a'] = self.ref.eta1['a'].T
+        # self.ref.lambdas['aa'] = self.ref.lambdas['aa'].transpose(2, 3, 0, 1)
+        # self.ref.lambdas['ab'] = self.ref.lambdas['ab'].transpose(2, 3, 0, 1)
+        # self.ref.lambdas['bb'] = self.ref.lambdas['bb'].transpose(2, 3, 0, 1)
+        # self.ref.lambdas['aaa'] = self.ref.lambdas['aaa'].transpose(3, 4, 5, 0, 1, 2)
+        # self.ref.lambdas['aab'] = self.ref.lambdas['aab'].transpose(3, 4, 5, 0, 1, 2)
+        # self.ref.lambdas['abb'] = self.ref.lambdas['abb'].transpose(3, 4, 5, 0, 1, 2)
+        # self.ref.lambdas['bbb'] = self.ref.lambdas['bbb'].transpose(3, 4, 5, 0, 1, 2)
+
     def print_amplitudes(self):
 
         nua, nub, noa, nob = self.T['ab'].shape
@@ -620,6 +649,35 @@ class RICMRCC:
             print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
             print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
+
+    def form_cumulants(self):
+
+        state_index, overlap = self.ref.get_state_indices_in_spectrum()
+
+        # Clear original RDMs
+        for key in self.ref.rdms.keys():
+            self.ref.rdms[key] *= 0.0
+
+        # Compute new state-averaged RDMs
+        for i, (istate, w) in enumerate(zip(state_index, self.ref.sa_weights)):
+            # Use FCIpy to get 1-, 2-, and 3-RDMs
+            rdms_i = self.ref.cisolver.compute_rdm123s(istate)
+            for key, value in rdms_i.items():
+                self.ref.rdms[key] += w * value
+
+        # Remake the cumulants
+        self.ref.make_cumulants()
+
+        # transpose?
+        # self.ref.gam1['a'] = self.ref.gam1['a'].T
+        # self.ref.eta1['a'] = self.ref.eta1['a'].T
+        # self.ref.lambdas['aa'] = self.ref.lambdas['aa'].transpose(2, 3, 0, 1)
+        # self.ref.lambdas['ab'] = self.ref.lambdas['ab'].transpose(2, 3, 0, 1)
+        # self.ref.lambdas['bb'] = self.ref.lambdas['bb'].transpose(2, 3, 0, 1)
+        # self.ref.lambdas['aaa'] = self.ref.lambdas['aaa'].transpose(3, 4, 5, 0, 1, 2)
+        # self.ref.lambdas['aab'] = self.ref.lambdas['aab'].transpose(3, 4, 5, 0, 1, 2)
+        # self.ref.lambdas['abb'] = self.ref.lambdas['abb'].transpose(3, 4, 5, 0, 1, 2)
+        # self.ref.lambdas['bbb'] = self.ref.lambdas['bbb'].transpose(3, 4, 5, 0, 1, 2)
 
 
     def print_amplitudes(self):

@@ -5,7 +5,6 @@ import datetime
 import subprocess
 import importlib.util
 from importlib.metadata import version as dist_version, PackageNotFoundError
-
 import numpy as np
 try:
     import pyscf
@@ -21,6 +20,11 @@ try:
     from .version import __version__
 except ImportError:
     __version__ = "unknown"
+
+
+# Export API
+from dsrg.reference import Reference, SpinReference, FakeReference
+from dsrg.driver import DSRG, RICMRCC
 
 def get_git_commit(cwd=None):
     """Return short commit hash for the repo at cwd (or current cwd)."""
