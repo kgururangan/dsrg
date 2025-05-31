@@ -8,6 +8,9 @@ except ImportError:
     print("FCIpy not installed - you will not be able to run relaxed or excited-state calculatiosn!")
     pass
 
+# [TODO]: Change how semicanonicalization is handled. In relaxed calculations, the semicanonicalizer
+# changes based on how the one-body active integrals change. We sould separate semicanonicalization
+# of integrals and RDMs.
 class Reference:
     
     def __init__(self, mc, mf, mo_coeff=None, nfrozen=0, sa_weights=np.array([1.0]), verbose=False):

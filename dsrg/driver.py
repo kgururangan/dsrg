@@ -282,6 +282,8 @@ class DSRG:
 
     def form_cumulants(self):
 
+        print(f"     ==> Forming Cumulants of Relaxed Reference <==")
+
         state_index, overlap = self.ref.get_state_indices_in_spectrum()
 
         # Clear original RDMs
@@ -295,19 +297,19 @@ class DSRG:
             for key, value in rdms_i.items():
                 self.ref.rdms[key] += w * value
 
+        # Canonicalize the RDMs
+
         # Remake the cumulants
         self.ref.make_cumulants()
 
-        # transpose?
-        # self.ref.gam1['a'] = self.ref.gam1['a'].T
-        # self.ref.eta1['a'] = self.ref.eta1['a'].T
-        # self.ref.lambdas['aa'] = self.ref.lambdas['aa'].transpose(2, 3, 0, 1)
-        # self.ref.lambdas['ab'] = self.ref.lambdas['ab'].transpose(2, 3, 0, 1)
-        # self.ref.lambdas['bb'] = self.ref.lambdas['bb'].transpose(2, 3, 0, 1)
-        # self.ref.lambdas['aaa'] = self.ref.lambdas['aaa'].transpose(3, 4, 5, 0, 1, 2)
-        # self.ref.lambdas['aab'] = self.ref.lambdas['aab'].transpose(3, 4, 5, 0, 1, 2)
-        # self.ref.lambdas['abb'] = self.ref.lambdas['abb'].transpose(3, 4, 5, 0, 1, 2)
-        # self.ref.lambdas['bbb'] = self.ref.lambdas['bbb'].transpose(3, 4, 5, 0, 1, 2)
+    def run_dsrg_relaxed(self, method, s, max_cycle=8, relax_conv=1.0e-04,
+                         maxiter=80, herm=True, conv=1.0e-07, max_ncomm=12, diis_size=6, out_of_core=False):
+
+        for it in range(max_cycle):
+
+            self.run_dsrg(method=method, s=s, herm=herm, maxiter=maxiter, conv=conv, max_ncomm=max_ncomm, diis_size=diis_size, out_of_core=out_of_core)
+            self.diagonalize_hbar(herm=herm)
+            self.form_cumulants()
 
     def print_amplitudes(self):
 
