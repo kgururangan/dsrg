@@ -422,22 +422,56 @@ class Reference:
         
     def get_semicanonicalizer(self):
 
-        def _diagonalize_and_reorder_nonsym(f):
-            e, u_left, u_right = scipy.linalg.eig(f, left=True, right=True)
-            isort = np.argsort(e)
-            u_left = u_left[:, isort]
-            u_right = u_right[:, isort]
-
-            # Why is this throwing?
-            assert np.allclose(np.dot(np.conj(u_left).T, u_right), np.eye(u_left.shape[1]), atol=1.0e-09, rtol=1.0e-09), "Left and right eigenvectors are not orthogonal!"
-
-            return u_left, u_right
-
         def _diagonalize_and_reorder(f):
-            e, u = scipy.linalg.eigh(f)
-            isort = np.argsort(e)
-            u_left = u[:, isort]
-            u_right = u[:, isort]
+
+            if np.linalg.norm(f - np.conj(f).T) > 1.0e-09: # non-Hermitian
+
+                print("Warning: Fock matrix is not Hermitian! Diagonalizing as non-Hermitian matrix.")
+
+                e, u_left, u_right = scipy.linalg.eig(f, left=True, right=True)
+                isort = np.argsort(np.real(e))
+                u_left = u_left[:, isort]
+                u_right = u_right[:, isort]
+
+                # Why is this throwing for virtuals?
+                # test = np.dot(np.conj(u_left).T, u_right)
+                # for i in range(test.shape[0]):
+                #     u_left[:, i] /= test[i, i]
+
+                n = e.shape[0]
+                for i in range(n):
+                    # (a) normalize the i-th pair so that <U_L[:,i] | U_R[:,i]> = 1
+                    scale = np.vdot(u_left[:, i], u_right[:, i])   # vdot = conj(U_L[:,i]) @ U_R[:,i]
+                    u_left[:, i] /= scale
+
+                    # (b) orthogonalize U_L[:, i] against all previously fixed U_R[:, j], j < i
+                    for j in range(i):
+                        # project out any component of U_R[:, j] from U_L[:, i]
+                        coeff = np.vdot(u_left[:, i], u_right[:, j])
+                        u_left[:, i] -= coeff * u_left[:, j]
+
+                    # (c) Now enforce <U_L[:,i] | U_R[:,i]> = 1 again (since step (b) can re‐introduce
+                    #     a small scaling error)
+                    scale2 = np.vdot(u_left[:, i], u_right[:, i])
+                    u_left[:, i] /= scale2
+
+                test = np.dot(np.conj(u_left).T, u_right)
+
+                print(np.linalg.norm(test - np.eye(u_left.shape[1])))
+                try:
+                    assert np.allclose(test, np.eye(u_left.shape[1]), atol=1.0e-09, rtol=1.0e-09)
+                except AssertionError:
+                    "Left and right eigenvectors are not orthogonal!"
+                    for i in range(f.shape[0]):
+                        for j in range(f.shape[1]):
+                            print(f"L*R[{i}, {j}] = {test[i, j]}")
+
+            else: # Hermitian
+                e, u = scipy.linalg.eigh(f)
+                isort = np.argsort(e)
+                u_left = u[:, isort]
+                u_right = u[:, isort]
+
             return u_left, u_right
 
         # diagonalize fock_a and fock_b in cc, aa, and vv sectors to get alpha and beta semicanonicalizers
@@ -448,20 +482,17 @@ class Reference:
         v = self.orbspace['virt_alpha']
         V = self.orbspace['virt_beta']
 
-        # [TODO]: Fix nonsymmetric case
-        fcn = lambda x: _diagonalize_and_reorder(x)
-
         self.U_L = {'a': np.zeros_like(self.F['a']), 'b': np.zeros_like(self.F['b'])}
         self.U_R = {'a': np.zeros_like(self.F['a']), 'b': np.zeros_like(self.F['b'])}
         for ispin, f in self.F.items():
             if ispin == 'a':
-                self.U_L[ispin][c, c], self.U_R[ispin][c, c] = fcn(f[c, c].copy())
-                self.U_L[ispin][a, a], self.U_R[ispin][a, a] = fcn(f[a, a].copy())
-                self.U_L[ispin][v, v], self.U_R[ispin][v, v] = fcn(f[v, v].copy())
+                self.U_L[ispin][c, c], self.U_R[ispin][c, c] = _diagonalize_and_reorder(f[c, c].copy())
+                self.U_L[ispin][a, a], self.U_R[ispin][a, a] = _diagonalize_and_reorder(f[a, a].copy())
+                self.U_L[ispin][v, v], self.U_R[ispin][v, v] = _diagonalize_and_reorder(f[v, v].copy())
             if ispin == 'b':
-                self.U_L[ispin][C, C], self.U_R[ispin][C, C] = fcn(f[C, C].copy())
-                self.U_L[ispin][A, A], self.U_R[ispin][A, A] = fcn(f[A, A].copy())
-                self.U_L[ispin][V, V], self.U_R[ispin][V, V] = fcn(f[V, V].copy())
+                self.U_L[ispin][C, C], self.U_R[ispin][C, C] = _diagonalize_and_reorder(f[C, C].copy())
+                self.U_L[ispin][A, A], self.U_R[ispin][A, A] = _diagonalize_and_reorder(f[A, A].copy())
+                self.U_L[ispin][V, V], self.U_R[ispin][V, V] = _diagonalize_and_reorder(f[V, V].copy())
 
         self.U_L['b'] = self.U_L['a'].copy()
         self.U_R['b'] = self.U_R['a'].copy()
@@ -476,12 +507,12 @@ class Reference:
         self.V['ab'] = rotate_2(self.U_L['a'], self.U_L['b'], self.U_R['a'], self.U_R['b'], self.V['ab'].copy())
         self.V['bb'] = rotate_2s(self.U_L['b'], self.U_R['b'], self.V['bb'].copy())
 
-        for key, value in self.Z.items():
-            print(f"{key} -> {np.linalg.norm(value.flatten())}")
-        for key, value in self.F.items():
-            print(f"{key} -> {np.linalg.norm(value.flatten())}")
-        for key, value in self.V.items():
-            print(f"{key} -> {np.linalg.norm(value.flatten())}")
+        # for key, value in self.Z.items():
+        #     print(f"{key} -> {np.linalg.norm(value.flatten())}")
+        # for key, value in self.F.items():
+        #     print(f"{key} -> {np.linalg.norm(value.flatten())}")
+        # for key, value in self.V.items():
+        #     print(f"{key} -> {np.linalg.norm(value.flatten())}")
 
     def semicanonicalize_rdms(self):
         a = self.orbspace['active_alpha']
