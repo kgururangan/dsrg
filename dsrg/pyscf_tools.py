@@ -3,6 +3,13 @@ import numpy as np
 from pyscf import fci
 from pyscf import symm
 
+def make_hf_integrals(mf):
+    # Note: You cannot replace this the T + V construction with mf.get_hcore() when using
+    # a CASCI calculation in conjunction with mf!
+    e1int_ao = mf.mol.intor_symmetric('int1e_kin') + mf.mol.intor_symmetric('int1e_nuc')    
+    e2int_ao = mf.mol.intor("int2e_sph", aosym="s1").transpose(0, 2, 1, 3)
+    return e1int_ao, e2int_ao
+
 def get_pyscf_orbsym(molecule, mo_coeff):
     return [x.upper() for x in symm.label_orb_symm(molecule, molecule.irrep_name, molecule.symm_orb, mo_coeff)]
 

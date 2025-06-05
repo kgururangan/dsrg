@@ -7,10 +7,9 @@ from dsrg.methods import MODULES
 from dsrg.utilities import (get_memory_usage,
                             numel_in_dict,
                             unflatten_vector_to_dict,
-                            semicanonicalize_active)
+                            rotate_1, rotate_2, rotate_2s, rotate_3b, rotate_3c, rotate_3s)
 from dsrg.diis import DIIS
 from dsrg.gno import denormal_order_ints
-
 
 class DSRG:
 
@@ -151,7 +150,7 @@ class DSRG:
             print("   MR-DSRG did not converge")
         # Record the energy
         self.correlation_energy = energy[0]
-        self.total_energy = self.correlation_energy + self.reference_energy
+        self.total_energy = self.correlation_energy + self.ref.e_cas
         # Record total time and print summary
         minutes, seconds = divmod(time.time() - t_start, 60)
         print("")
@@ -227,15 +226,6 @@ class DSRG:
         c = self.ref.orbspace['core_alpha']
         C = self.ref.orbspace['core_beta']
         # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
-        # coulomb = np.einsum("ipiq->pq", self.hbar['ab'][c, A, c, A])
-        # exchange = np.einsum("ipqi->pq", self.hbar['ab'][c, A, a, C])
-        # hbar1_act = self.hbar['a'][a, a] + 2*coulomb - exchange
-        #
-        # hbar_act = {'a': hbar1_act,
-        #             'b': hbar1_act,
-        #             'aa': self.hbar['aa'][a, a, a, a],
-        #             'ab': self.hbar['ab'][a, A, a, A],
-        #             'bb': self.hbar['bb'][A, A, A, A]}
         hbar_act = {'a': self.hbar['a'][a, a],
                     'b': self.hbar['b'][A, A],
                     'aa': self.hbar['aa'][a, a, a, a],
@@ -246,12 +236,16 @@ class DSRG:
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
         # Semicanonicalize the active-space HBar integrals
-        print(f"    Semicanonicalize denormal-ordered active HBar integrals")
-        hbar_act = semicanonicalize_active(hbar_act, self.ref)
+        # THIS SEEMED TO MESS UP THE RELAXATION ENERGY FOR SOME REASON
+        # print(f"    Semicanonicalize denormal-ordered active HBar integrals")
+        # hbar_act['a'] = rotate_1(self.ref.U['a'][a, a], hbar_act['a'])
+        # hbar_act['b'] = rotate_1(self.ref.U['b'][A, A], hbar_act['b'])
+        # hbar_act['aa'] = rotate_2s(self.ref.U['a'][a, a], hbar_act['aa'])
+        # hbar_act['ab'] = rotate_2(self.ref.U['a'][a, a], self.ref.U['b'][A, A], hbar_act['ab'])
+        # hbar_act['bb'] = rotate_2s(self.ref.U['b'][A, A], hbar_act['bb'])
         # Diagonalize Hamiltonian in the CAS space using fcipy
         self.ref.cisolver.e1int = hbar_act['a'].copy()
         self.ref.cisolver.e2int = hbar_act['ab'].copy()
-        # self.ref.cisolver.run_ci(self.ref.nstates, opt=True, herm=herm)
         self.ref.cisolver.build_hamiltonian(herm=herm)
         self.ref.cisolver.diagonalize_hamiltonian(herm=herm)
 
@@ -261,55 +255,68 @@ class DSRG:
         state_index, overlap = self.ref.get_state_indices_in_spectrum()
         i_ground = state_index[0]
 
+        relaxation_energy = np.zeros(self.ref.nstates)
+        correlation_energy = np.zeros(self.ref.nstates)
+        total_energy_relaxed = np.zeros(self.ref.nstates)
+
         for i, istate in enumerate(state_index):
-            # ground_state = False
             print("")
             print(f"    Calculation Summary: State {i}")
             print(f"    initial root {i} -> relaxed root {istate}")
             print(f"    overlap = {overlap[i, istate]}")
-            # if istate == i_ground:
-            #     ground_state = True
-            #     print("    [Ground State]")
             print("    ------------------------------------")
-            # if ground_state:
-            #     print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-            #     print("    Unrelaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy))
-            # else:
-            #     print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[istate] - self.total_energy_relaxed[i_ground]))
             print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
+            print("    Relaxed MR-DSRG Correlation Energy: {: 20.12f}".format(self.relaxation_energy[istate] + self.correlation_energy))
             print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
 
-    def form_cumulants(self):
+            # record energies
+            relaxation_energy[i] = self.relaxation_energy[istate]
+            correlation_energy[i] = self.relaxation_energy[istate] + self.correlation_energy
+            total_energy_relaxed[i] = self.total_energy_relaxed[istate]
 
-        print(f"     ==> Forming Cumulants of Relaxed Reference <==")
+        return relaxation_energy, correlation_energy, total_energy_relaxed
 
-        state_index, overlap = self.ref.get_state_indices_in_spectrum()
-
-        # Clear original RDMs
-        for key in self.ref.rdms.keys():
-            self.ref.rdms[key] *= 0.0
-
-        # Compute new state-averaged RDMs
-        for i, (istate, w) in enumerate(zip(state_index, self.ref.sa_weights)):
-            # Use FCIpy to get 1-, 2-, and 3-RDMs
-            rdms_i = self.ref.cisolver.compute_rdm123s(istate)
-            for key, value in rdms_i.items():
-                self.ref.rdms[key] += w * value
-
-        # Canonicalize the RDMs
-
-        # Remake the cumulants
-        self.ref.make_cumulants()
-
-    def run_dsrg_relaxed(self, method, s, max_cycle=8, relax_conv=1.0e-04,
+    def run_dsrg_relaxed(self, method, s, max_cycle=4, relax_conv=1.0e-06,
                          maxiter=80, herm=True, conv=1.0e-07, max_ncomm=12, diis_size=6, out_of_core=False):
 
+        cas_energy = np.zeros(max_cycle)
+        relaxation_energy = np.zeros((self.ref.nstates, max_cycle))
+        correlation_energy = np.zeros((self.ref.nstates, max_cycle))
+        total_energy = np.zeros((self.ref.nstates, max_cycle))
+
         for it in range(max_cycle):
+            cas_energy[it] = self.ref.e_cas
 
             self.run_dsrg(method=method, s=s, herm=herm, maxiter=maxiter, conv=conv, max_ncomm=max_ncomm, diis_size=diis_size, out_of_core=out_of_core)
-            self.diagonalize_hbar(herm=herm)
-            self.form_cumulants()
+
+            relaxation_energy[:, it], correlation_energy[:, it], total_energy[:, it] = self.diagonalize_hbar(herm=herm)
+
+            # Check convergence
+            if it > 0:
+                e_diff = total_energy[:, it] - total_energy[:, it - 1]
+                if np.all(np.abs(e_diff) < relax_conv):
+                    print(f"   Relaxed MR-DSRG converged after {it + 1} cycles.")
+                    break
+
+            self.ref.update()
+        else:
+            print("   Relaxed MR-DSRG did not converge")
+
+        # Print the relaxation results
+        print("")
+        print("    Iteration      CAS Energy      Relaxation Energy      Correlation Energy      Total Energy")
+        for i in range(it + 1):
+            for istate in range(self.ref.nstates):
+                print("    {: 5d} {: 20.12f} {: 20.12f} {: 20.12f} {: 20.12f}".format(
+                    i + 1,
+                    cas_energy[i],
+                    relaxation_energy[istate, i],
+                    correlation_energy[istate, i],
+                    total_energy[istate, i],
+                ))
+
+        
 
     def print_amplitudes(self):
 
@@ -539,7 +546,7 @@ class RICMRCC:
             print("   ric-MRCC did not converge")
         # Record the energy
         self.correlation_energy = energy
-        self.total_energy = self.correlation_energy + self.reference_energy
+        self.total_energy = self.correlation_energy + self.ref.e_cas
         # Record total time and print summary
         minutes, seconds = divmod(time.time() - t_start, 60)
         print("")
@@ -560,6 +567,11 @@ class RICMRCC:
 
     def diagonalize_hbar(self, herm):
         print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
+        # Slicing
+        a = self.ref.orbspace['active_alpha']
+        A = self.ref.orbspace['active_beta']
+        c = self.ref.orbspace['core_alpha']
+        C = self.ref.orbspace['core_beta']
         self.relaxation_energy = np.zeros(self.ref.nstates)
         self.total_energy_relaxed = np.zeros(self.ref.nstates)
         # [TODO]: Construct the entire hole 1- and 2-body hbars. This may improve things.
@@ -573,8 +585,12 @@ class RICMRCC:
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
         # Semicanonicalize the active-space integrals
-        print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
-        hbar_act = semicanonicalize_active(hbar_act, self.ref)
+        # print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
+        # hbar_act['a'] = rotate_1(self.ref.U['a'][a, a], hbar_act['a'])
+        # hbar_act['b'] = rotate_1(self.ref.U['b'][A, A], hbar_act['b'])
+        # hbar_act['aa'] = rotate_2s(self.ref.U['a'][a, a], hbar_act['aa'])
+        # hbar_act['ab'] = rotate_2(self.ref.U['a'][a, a], self.ref.U['b'][A, A], hbar_act['ab'])
+        # hbar_act['bb'] = rotate_2s(self.ref.U['b'][A, A], hbar_act['bb'])
         # Diagonalize Hamiltonian in the CAS space using fcipy
         self.ref.cisolver.e1int = hbar_act['a'].copy()
         self.ref.cisolver.e2int = hbar_act['ab'].copy()
@@ -588,99 +604,66 @@ class RICMRCC:
         self.total_energy_relaxed = self.total_energy + self.relaxation_energy
 
         state_index, overlap = self.ref.get_state_indices_in_spectrum()
-        # i_ground = state_index[0]
 
-        # overlap = np.dot(self.ref.ci_coeff_init.T, self.ref.cisolver.coef)
-        # print(state_index)
-
-        # for i in range(self.ref.nstates):
-        #
-        #     self.relaxation_energy[i] = self.ref.cisolver.state_eigval[i] + e_scalar
-        #     self.total_energy_relaxed[i] = self.total_energy + self.relaxation_energy[i]
-        #     print("")
-        #     print(f"    Calculation Summary: State {i}")
-        #     print("    ------------------------------------")
-        #     if i == 0:
-        #         print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        #         print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-        #     else:
-        #         print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[i] - self.total_energy_relaxed[0]))
-        #     print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[i]))
-        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[i]))
-        #     self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
-
-        # for i in range(overlap.shape[0]):
-        #     print(f"State {i}")
-        #     for j in range(overlap.shape[1]):
-        #         print(f"S[{i}, {j}] = {overlap[i, j]}")
-        #     print("")
-
-        # for i, (e_t, e_r) in enumerate(zip(self.total_energy_relaxed, self.relaxation_energy)):
-        #     idx = np.argsort(overlap, axis=1)
-        #     print("")
-        #     print(f"    Calculation Summary: State {i}")
-        #     print("    ------------------------------------")
-        #     # if i == 0:
-        #     #     print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-        #     #     print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-        #     # else:
-        #     #     print("    Excitation Energy: {: 20.12f}".format(e_t - self.total_energy_relaxed[0]))
-        #     print("    Relaxation Energy: {: 20.12f}".format(e_r))
-        #     print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(e_t))
-        #     print("    State Overlaps:")
-        #     for j in range(5):
-        #         print(f"       [{j + 1}]     {idx[j]}    {overlap[idx[j], i]}")
-        #
-        #     self.ref.cisolver.print_ci_vector(state=i, prtol=0.19)
+        relaxation_energy = np.zeros(self.ref.nstates)
+        correlation_energy = np.zeros(self.ref.nstates)
+        total_energy_relaxed = np.zeros(self.ref.nstates)
 
         for i, istate in enumerate(state_index):
-            # ground_state = False
             print("")
             print(f"    Calculation Summary: State {i}")
             print(f"    initial root {i} -> relaxed root {istate}")
-            print(f"    overlap = {overlap[i, istate]}")
-            # if istate == i_ground:
-            #     ground_state = True
-            #     print("    [Ground State]")
             print("    ------------------------------------")
-            # if ground_state:
-            #     print("    Reference Energy: {: 20.12f}".format(self.ref.e_cas))
-            #     print("    Unrelaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy))
-            # else:
-            #     print("    Excitation Energy: {: 20.12f}".format(self.total_energy_relaxed[istate] - self.total_energy_relaxed[i_ground]))
             print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
+            print("    Relaxed ric-MRCC Correlation Energy: {: 20.12f}".format(self.relaxation_energy[istate] + self.correlation_energy))
             print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
+            # record energies
+            relaxation_energy[i] = self.relaxation_energy[istate]
+            correlation_energy[i] = self.relaxation_energy[istate] + self.correlation_energy
+            total_energy_relaxed[i] = self.total_energy_relaxed[istate]
 
-    def form_cumulants(self):
+        return relaxation_energy, correlation_energy, total_energy_relaxed
+    
+    def run_ricmrcc_relaxed(self, method, s, max_cycle=4, relax_conv=1.0e-06,
+                         maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05,
+                         max_ncomm=12, diis_size=6, out_of_core=False):
 
-        state_index, overlap = self.ref.get_state_indices_in_spectrum()
+        cas_energy = np.zeros(max_cycle)
+        relaxation_energy = np.zeros((self.ref.nstates, max_cycle))
+        correlation_energy = np.zeros((self.ref.nstates, max_cycle))
+        total_energy = np.zeros((self.ref.nstates, max_cycle))
 
-        # Clear original RDMs
-        for key in self.ref.rdms.keys():
-            self.ref.rdms[key] *= 0.0
+        for it in range(max_cycle):
+            cas_energy[it] = self.ref.e_cas
 
-        # Compute new state-averaged RDMs
-        for i, (istate, w) in enumerate(zip(state_index, self.ref.sa_weights)):
-            # Use FCIpy to get 1-, 2-, and 3-RDMs
-            rdms_i = self.ref.cisolver.compute_rdm123s(istate)
-            for key, value in rdms_i.items():
-                self.ref.rdms[key] += w * value
+            self.run_ricmrcc(method=method, s=s, herm=herm, maxiter=maxiter, e_conv=e_conv, t_conv=t_conv, diis_size=diis_size, out_of_core=out_of_core)
 
-        # Remake the cumulants
-        self.ref.make_cumulants()
+            relaxation_energy[:, it], correlation_energy[:, it], total_energy[:, it] = self.diagonalize_hbar(herm=herm)
 
-        # transpose?
-        # self.ref.gam1['a'] = self.ref.gam1['a'].T
-        # self.ref.eta1['a'] = self.ref.eta1['a'].T
-        # self.ref.lambdas['aa'] = self.ref.lambdas['aa'].transpose(2, 3, 0, 1)
-        # self.ref.lambdas['ab'] = self.ref.lambdas['ab'].transpose(2, 3, 0, 1)
-        # self.ref.lambdas['bb'] = self.ref.lambdas['bb'].transpose(2, 3, 0, 1)
-        # self.ref.lambdas['aaa'] = self.ref.lambdas['aaa'].transpose(3, 4, 5, 0, 1, 2)
-        # self.ref.lambdas['aab'] = self.ref.lambdas['aab'].transpose(3, 4, 5, 0, 1, 2)
-        # self.ref.lambdas['abb'] = self.ref.lambdas['abb'].transpose(3, 4, 5, 0, 1, 2)
-        # self.ref.lambdas['bbb'] = self.ref.lambdas['bbb'].transpose(3, 4, 5, 0, 1, 2)
+            # Check convergence
+            if it > 0:
+                e_diff = total_energy[:, it] - total_energy[:, it - 1]
+                if np.all(np.abs(e_diff) < relax_conv):
+                    print(f"   Relaxed ric-MRCC converged after {it + 1} cycles.")
+                    break
 
+            self.ref.update()
+        else:
+            print("   Relaxed ric-MRCC did not converge")
+
+        # Print the relaxation results
+        print("")
+        print("    Iteration      CAS Energy      Relaxation Energy      Correlation Energy      Total Energy")
+        for i in range(it + 1):
+            for istate in range(self.ref.nstates):
+                print("    {: 5d} {: 20.12f} {: 20.12f} {: 20.12f} {: 20.12f}".format(
+                    i + 1,
+                    cas_energy[i],
+                    relaxation_energy[istate, i],
+                    correlation_energy[istate, i],
+                    total_energy[istate, i],
+                ))
 
     def print_amplitudes(self):
 

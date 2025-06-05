@@ -34,8 +34,7 @@ def test_mrdsrg_ldsrg2_1():
     mc.analyze()
 
     # Create the reference
-    ref = Reference(mc, mf, mo_coeff=mc.mo_coeff, nfrozen=2, verbose=True)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mc, mf, nfrozen=2)
 
     # Run DSRG
     driver = DSRG(ref)

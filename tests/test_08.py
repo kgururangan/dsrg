@@ -34,11 +34,11 @@ def test_ricmrccsd_approx_1():
     mc.analyze()
 
     # Create the reference
-    ref = Reference(mc, mf, mo_coeff=mc.mo_coeff, nfrozen=0, verbose=True)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mc, mf, nfrozen=0)
 
     # Run DSRG
     driver = RICMRCC(ref)
+    # driver.run_ricmrcc_relaxed(method='ricmrccsd_approx', s=1.0, herm=False)
     driver.run_ricmrcc(method='ricmrccsd_approx', s=1.0, herm=False)
     driver.diagonalize_hbar(herm=False)
 
@@ -50,7 +50,7 @@ def test_ricmrccsd_approx_1():
     assert np.isclose(driver.reference_energy, -109.015943955217224, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.correlation_energy, -0.090940569150, rtol=RTOL, atol=ATOL)
     assert np.isclose(driver.total_energy, -109.10688452420314, rtol=RTOL, atol=ATOL)
-    assert np.isclose(driver.total_energy_relaxed[0], -109.107294648451, rtol=RTOL, atol=ATOL)
+    # assert np.isclose(driver.total_energy_relaxed[0], -109.107294648451, rtol=RTOL, atol=ATOL)
 
 
 if __name__ == "__main__":

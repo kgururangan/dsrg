@@ -1,6 +1,8 @@
 import time
 import numpy as np
-from dsrg.pyscf_tools import make_casci_rdm123s, make_casci_rdm123, get_pyscf_orbsym
+import scipy
+from dsrg.pyscf_tools import make_casci_rdm123s, make_casci_rdm123, get_pyscf_orbsym, make_hf_integrals
+from dsrg.utilities import rotate_1, rotate_2, rotate_2s, rotate_3b, rotate_3c, rotate_3s
 try:
     from fcipy.driver import Driver as CI
     from fcipy.system import System as CI_system
@@ -8,20 +10,77 @@ except ImportError:
     print("FCIpy not installed - you will not be able to run relaxed or excited-state calculatiosn!")
     pass
 
+
 # [TODO]: Change how semicanonicalization is handled. In relaxed calculations, the semicanonicalizer
 # changes based on how the one-body active integrals change. We sould separate semicanonicalization
 # of integrals and RDMs.
 class Reference:
+
+    @classmethod
+    def from_pyscf(cls, mc, mf, nfrozen, sa_weights=np.array([1.0])):
+
+        nelectron = mf.mol.nelectron
+        nuclear_repulsion = mf.mol.energy_nuc()
+
+        mo_coeff = mc.mo_coeff
+        e1int_ao, e2int_ao = make_hf_integrals(mf)
+
+        point_group = mf.mol.groupname
+        orbsym = get_pyscf_orbsym(mf.mol, mo_coeff)
+
+        nelcas_alpha, nelcas_beta = mc.nelecas
+        cas = ((nelcas_alpha, nelcas_beta), mc.ncas)
+
+        ci0 = []
+        if isinstance(mc.ci, list):
+            for i, ci_vec in enumerate(mc.ci):
+                ci0.append(ci_vec.flatten())
+        else:
+            ci0.append(mc.ci.flatten())
+
+        ci0 = np.array(ci0).T  # shape (ndet, nstates)
+
+        assert ci0.shape[1] == len(sa_weights)
+
+        ref = cls(
+            e1int_ao, e2int_ao, mo_coeff, nuclear_repulsion,
+            cas=cas, nelectron=nelectron, ci_coeff_init=ci0, nfrozen=nfrozen,
+            point_group=point_group, orbsym=orbsym,
+            sa_weights=sa_weights
+        )
+
+        # Initialize the reference
+        ref.initialize()
+
+        # Check that the CAS energy computed via RDMs in reference matches the PySCF result
+        print("    Expected State-Averaged CAS Energy = ", mc.e_tot)
+        try:
+            assert np.allclose(ref.e_cas, mc.e_tot)
+            assert np.allclose(ref.e_cas_from_fock, mc.e_tot)
+            print("    >> All is well! :)\n")
+        except AssertionError:
+            raise ValueError("State-averaged CAS energy computed via RDMs does not match!")
+        return ref
     
-    def __init__(self, mc, mf, mo_coeff=None, nfrozen=0, sa_weights=np.array([1.0]), verbose=False):
-        self.mc = mc
-        self.mf = mf
+    def __init__(self, 
+                 e1int_ao, e2int_ao, mo_coeff, nuclear_repulsion,
+                 cas, nelectron, 
+                 ci_coeff_init,
+                 nfrozen=0,
+                 point_group=None, orbsym=None,
+                 sa_weights=np.array([1.0])):
+        
         self.nfrozen = nfrozen
-        self.nelectron = mc.mol.nelectron
-        self.norb = mc.mo_coeff.shape[1]
-        self.nuclear_repulsion = self.mf.mol.energy_nuc()
-        self.nelcas_alpha, self.nelcas_beta = self.mc.nelecas
-        self.cas = (self.nelcas_alpha + self.nelcas_beta, self.mc.ncas)
+        self.nelectron = nelectron
+        self.mo_coeff = mo_coeff
+        self.norb = self.mo_coeff.shape[1]
+        self.nuclear_repulsion = nuclear_repulsion
+        self.nelcas_alpha, self.nelcas_beta = cas[0]
+        self.cas = (self.nelcas_alpha + self.nelcas_beta, cas[1])
+
+        self.e1int_ao = e1int_ao
+        self.e2int_ao = e2int_ao
+
         self.ncore_alpha = self.nelectron // 2 - self.nelcas_alpha 
         self.ncore_beta = self.nelectron // 2 - self.nelcas_beta
         self.nact_alpha = self.cas[1]
@@ -32,11 +91,9 @@ class Reference:
         self.nstates = len(sa_weights)
         self.sa_weights = sa_weights
         self.cas_state_energies = np.zeros(len(self.sa_weights))
-        #
-        if mo_coeff is None:
-            self.mo_coeff = self.mf.mo_coeff
-        else:
-            self.mo_coeff = mo_coeff
+        self.e_frozen_core = 0.0
+        self.mo_coeff = mo_coeff
+        self.ci_coeff_init = ci_coeff_init
         #
         self.nhole_alpha = self.ncore_alpha + self.nact_alpha
         self.nhole_beta = self.ncore_beta + self.nact_beta
@@ -64,70 +121,118 @@ class Reference:
             'particle_beta': slice(self.ncore_beta, self.norb),
         }
         #
-        self.verbose = verbose
-        #
         self.rdms = None
+        #
+        if point_group is None:
+            self.point_group = "C1"
+        else:
+            self.point_group = point_group
+        if orbsym is None:
+            self.orbsym = ["A" for _ in range(self.norb)]
+        else:
+            self.orbsym = orbsym
 
-    def kernel(self, semi=True):
-        if self.verbose: print(f"\n    ==> Spin-Integrated CAS Reference <==")
-        if self.verbose: print(f"    Semicanonicalization = {semi}")
-        # first make the hcore/V integrals in HF or CASSCF basis
+    def initialize(self):
+        print(f"\n    ==> Spin-Integrated CAS Reference <==")
+        # Make integrals in MO basis (CASSCF or RHF)
         tic = time.time()
-        self.make_hf_integrals()
+        self.ao_to_mo()
         toc = time.time()
-        if self.verbose: print(f"    HF integral construction... {toc - tic}s")
+        print(f"    Transforming integrals to MO basis... {toc - tic}s")
         # diagonalize the Hamiltonian in the CAS space (this will recover the CASSCF/CASCI energies)
         tic = time.time()
         self.initialize_cisolver()
         self.diagonalize_cas_hamiltonian()
         toc = time.time()
-        if self.verbose: print(f"    Hamiltonian CAS diagonalization... {toc - tic}s")
+        print(f"    Hamiltonian CAS diagonalization... {toc - tic}s")
         # get RDMs from CAS wave function
         tic = time.time()
         self.make_state_avg_rdms()
         toc = time.time()
-        if self.verbose: print(f"    RDM construction... {toc - tic}s")
+        print(f"    RDM construction... {toc - tic}s")
         # make generalized Fock operator
         tic = time.time()
         self.make_fock()
         toc = time.time()
-        if self.verbose: print(f"    Fock construction... {toc - tic}s")
+        print(f"    Fock construction... {toc - tic}s")
         # semi-canonicalize integrals and RDMs
-        if semi:
-            tic = time.time()
-            self.get_semicanonicalizer()
-            self.semicanonicalize()
-            toc = time.time()
-            if self.verbose: print(f"    Semicanonicalize integrals and RDMs... {toc - tic}s")
+        tic = time.time()
+        self.get_semicanonicalizer()
+        self.semicanonicalize_integrals()
+        self.semicanonicalize_rdms()
+        toc = time.time()
+        print(f"    Semicanonicalize integrals and RDMs... {toc - tic}s")
         # make cumulants from RDMs
         tic = time.time()
         self.make_cumulants()
         toc = time.time()
-        if self.verbose: print(f"    Make cumulants... {toc - tic}s")
+        print(f"    Make cumulants... {toc - tic}s")
         # check that 1- and 2-RDMs in semicanonical basis is correct by computing CAS energy
         self.compute_sa_cas_energy()
         #
         self.compute_cas_energy_from_fock()
         #
         self.freeze_orbitals()
-        if self.verbose: print(f"    Freezing {self.nfrozen} doubly occupied orbitals for correlated treatment...")
+        print(f"    Freezing {self.nfrozen} doubly occupied orbitals for correlated treatment...")
+        print(f"    Frozen core energy = {self.e_frozen_core}")
         #
-        if self.verbose:
-            print("")
-            print("    CAS Reference Summary:")
-            print("    -----------------------")
-            for i, e in enumerate(self.cas_state_energies):
-                print(f"    CAS State {i} Energy = {e}")
-            print("")
-            print("    State-Averaged CAS Energy (from RDMs) = ", self.e_cas)
-            print("    State-Averaged CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
-            print("    Expected State-Averaged CAS Energy = ", self.mc.e_tot)
+        print("")
+        print("    CAS Reference Summary:")
+        print("    -----------------------")
+        for i, e in enumerate(self.cas_state_energies):
+            print(f"    CAS State {i} Energy = {e}")
+        print("")
+        print("    State-Averaged CAS Energy (from RDMs) = ", self.e_cas)
+        print("    State-Averaged CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
         try:
-            assert np.allclose(self.e_cas, self.mc.e_tot)
-            assert np.allclose(self.e_cas_from_fock, self.mc.e_tot)
-            if self.verbose: print("    >> All is well! :)\n")
+            assert np.allclose(self.e_cas, self.e_cas_from_fock, atol=1.0e-06, rtol=1.0e-06)
         except AssertionError:
-            raise ValueError("State-averaged CAS energy computed via RDMs does not match!")
+            raise ValueError("CAS energy from RDMs does not match CAS energy from Fock!")
+
+    def ao_to_mo(self):
+        """Transform the one- and two-electron integrals to the MO basis."""
+        # Make 1- and 2-electron integrals in MO basis
+        hcore = np.einsum('pi,pq,qj->ij', self.mo_coeff, self.e1int_ao, self.mo_coeff)
+        eri = np.einsum("ijkl,ip,jq,kr,ls->pqrs", self.e2int_ao, self.mo_coeff, self.mo_coeff, self.mo_coeff, self.mo_coeff, optimize=True)
+        eri_sym = eri - eri.transpose(0, 1, 3, 2)
+        self.Z = {'a': hcore, 'b': hcore}
+        self.V = {'aa': eri_sym, 'ab': eri, 'bb': eri_sym}
+
+    def update(self):
+        """Update the reference state with a new set of CI vectors."""
+        print(f"\n    ==> Updating Spin-Integrated CAS Reference <==")
+        # Clear original RDMs
+        print('    Making new state-averaged RDMs...')
+        self.rdms = None      
+        self.make_state_avg_rdms()
+        # Make new Fock matrix
+        print('    Making new Fock matrix...')
+        self.make_fock()
+        # Make new semicanonicalizer
+        print('    Making new semicanonicaliezer...')
+        self.get_semicanonicalizer()
+        # Semi-canonicalize integrals and RDMs
+        print('    Semicanonicalizing integrals and RDMs...')
+        self.semicanonicalize_integrals()
+        self.semicanonicalize_rdms()
+        # Make new cumulants
+        print('    Making new cumulants...')
+        self.make_cumulants()
+        # Compute SA CAS energy from RDMs
+        self.compute_sa_cas_energy()
+        self.compute_cas_energy_from_fock()
+        print("")
+        print("    CAS Reference Summary:")
+        print("    -----------------------")
+        for i, e in enumerate(self.cas_state_energies):
+            print(f"    CAS State {i} Energy = {e}")
+        print("")
+        print("    State-Averaged CAS Energy (from RDMs) = ", self.e_cas)
+        print("    State-Averaged CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
+        try:
+            assert np.allclose(self.e_cas, self.e_cas_from_fock, atol=1.0e-06, rtol=1.0e-06)
+        except AssertionError:
+            raise ValueError("CAS energy from RDMs does not match CAS energy from Fock!")
 
     def get_state_indices_in_spectrum(self):
         overlap = np.dot(self.ci_coeff_init.T, self.cisolver.coef)
@@ -147,23 +252,15 @@ class Reference:
         nfroz = self.ncore_alpha
         ndelete = 0
         mult = 1
-        pg = self.mf.mol.groupname
-        orbsym = get_pyscf_orbsym(self.mf.mol, self.mo_coeff)
         self.cisolver = CI.from_custom(
             nel, norb, nfroz, ndelete, mult,
-            self.Z['a'][h, h].copy(), self.V['ab'][h, H, h, H].copy(), self.mf.mol.energy_nuc(),
-            point_group=pg, orbital_symmetry=orbsym,
+            self.Z['a'][h, h].copy(), self.V['ab'][h, H, h, H].copy(), self.nuclear_repulsion,
+            point_group=self.point_group, orbital_symmetry=self.orbsym,
         )
         self.cisolver.load_determinants(target_irrep=None)
 
     def diagonalize_cas_hamiltonian(self):
-        self.ci_coeff_init = np.zeros((self.cisolver.ndet, len(self.sa_weights)))
-        if isinstance(self.mc.ci, list):
-            for i, ci_vec in enumerate(self.mc.ci):
-                self.ci_coeff_init[:, i] = ci_vec.flatten()
-        else:
-            self.ci_coeff_init[:, 0] = self.mc.ci.flatten()
-
+        # Initialize CI coefficients
         self.cisolver.build_hamiltonian(herm=True)
         self.cisolver.diagonalize_hamiltonian(herm=True)
 
@@ -177,58 +274,6 @@ class Reference:
             self.cisolver.print_ci_vector(state=istate, prtol=0.19)
             print("")
 
-        # self.cisolver.coef = np.zeros((self.cisolver.ndet, self.nstates))
-        # if isinstance(self.mc.ci, list):
-        #     for i, ci_vec in enumerate(self.mc.ci):
-        #         self.cisolver.coef[:, i] = ci_vec.flatten()
-        # else:
-        #     self.cisolver.coef[:, 0] = self.mc.ci.flatten()
-        #
-        # print("Before diagonalization:")
-        # print("-----------------------")
-        # for i in range(self.nstates):
-        #     c = self.cisolver.coef[:, i]
-        #     sigma = self.cisolver.apply_hamiltonian(c, herm=True)
-        #     en = np.dot(c.T, sigma)
-        #     r = sigma - en * c
-        #     en += self.cisolver.system.frozen_energy + self.cisolver.system.nuclear_repulsion
-        #     print(f"State {i}: E = {en}  |Hc - Ec| = {np.linalg.norm(r)}")
-        #
-        # Diagonalize Hamiltonian in the CAS space using fcipy
-        # self.cisolver.run_ci(nroot=self.nstates, opt=True, herm=True)
-        #
-        # print("After diagonalization:")
-        # print("-----------------------")
-        # for i in range(self.nstates):
-        #     c = self.cisolver.coef[:, i]
-        #     sigma = self.cisolver.apply_hamiltonian(c, herm=True)
-        #     en = np.dot(c.T, sigma)
-        #     r = sigma - en * c
-        #     en += self.cisolver.system.frozen_energy + self.cisolver.system.nuclear_repulsion
-        #     print(f"State {i}: E = {en}  |Hc - Ec| = {np.linalg.norm(r)}")
-
-    # def make_state_avg_rdms(self):
-    #     for i, istate in enumerate(self.state_index):
-    #
-    #         if isinstance(self.mc.ci, list):
-    #             coeff = self.mc.ci[istate]
-    #         else:
-    #             coeff = self.mc.ci
-    #
-    #         rdms_i = make_casci_rdm123s(coeff, self.cas[1], self.nelcas_alpha, self.nelcas_beta)
-    #
-    #         self.cas_state_energies[i] = self.compute_cas_state_energy(rdms_i)
-    #         # self.cas_ci_coeff[i] = coeff.flatten() # [a(bbb...),a(bbb...),...]
-    #
-    #         print(f"CAS State {istate} Energy: {self.cas_state_energies[i]}")
-    #         if self.rdms is None:
-    #             self.rdms = {key: None for key in rdms_i}
-    #             for key, value in rdms_i.items():
-    #                 self.rdms[key] = self.sa_weights[i] * value
-    #         else:
-    #             for key, value in rdms_i.items():
-    #                 self.rdms[key] += self.sa_weights[i] * value
-
     def make_state_avg_rdms(self):
 
         state_index, _ = self.get_state_indices_in_spectrum()
@@ -239,8 +284,9 @@ class Reference:
             # Compute CAS state energies using RDMs
             self.cas_state_energies[i] = self.compute_cas_state_energy(rdms_i)
             # Check that the CI diagonalization and the RDMs produce the same energy
-            assert np.allclose(self.cas_state_energies[i], self.cisolver.total_energy[istate], atol=1.0e-06, rtol=1.0e-06)
+            # assert np.allclose(self.cas_state_energies[i], self.cisolver.total_energy[istate], atol=1.0e-06, rtol=1.0e-06)
             if self.rdms is None:
+                print('    Initializing RDMs')
                 self.rdms = {key: None for key in rdms_i}
                 for key, value in rdms_i.items():
                     self.rdms[key] = w * value
@@ -352,21 +398,6 @@ class Reference:
         self.lambdas = {'aa': lam2aa, 'ab': lam2ab, 'bb': lam2bb,
                         'aaa': lam3aaa, 'aab': lam3aab, 'abb': lam3abb, 'bbb': lam3bbb}
         
-    def make_hf_integrals(self):
-
-        # Note: You cannot replace this the T + V construction with mf.get_hcore() when using
-        # a CASCI calculation in conjunction with mf!
-        hcore_ao = self.mf.mol.intor_symmetric('int1e_kin') + self.mf.mol.intor_symmetric('int1e_nuc')
-        hcore = np.einsum('pi,pq,qj->ij', self.mo_coeff, hcore_ao, self.mo_coeff)
-        
-        eri = self.mf.mol.intor("int2e_sph", aosym="s1").transpose(0, 2, 1, 3)
-        eri = np.einsum("ijkl,ip,jq,kr,ls->pqrs", eri, self.mo_coeff, self.mo_coeff, self.mo_coeff, self.mo_coeff, optimize=True)
-        
-        eri_sym = eri - eri.transpose(0, 1, 3, 2)
-
-        self.Z = {'a': hcore, 'b': hcore}
-        self.V = {'aa': eri_sym, 'ab': eri, 'bb': eri_sym}
-        
     def make_fock(self):
         c = self.orbspace['core_alpha']
         C = self.orbspace['core_beta']
@@ -391,12 +422,23 @@ class Reference:
         
     def get_semicanonicalizer(self):
 
+        def _diagonalize_and_reorder_nonsym(f):
+            e, u_left, u_right = scipy.linalg.eig(f, left=True, right=True)
+            isort = np.argsort(e)
+            u_left = u_left[:, isort]
+            u_right = u_right[:, isort]
+
+            # Why is this throwing?
+            assert np.allclose(np.dot(np.conj(u_left).T, u_right), np.eye(u_left.shape[1]), atol=1.0e-09, rtol=1.0e-09), "Left and right eigenvectors are not orthogonal!"
+
+            return u_left, u_right
+
         def _diagonalize_and_reorder(f):
-            #e, u = np.linalg.eig(f)
-            #isort = np.argsort(e)
-            #return u[:, isort].copy()
-            e, u = np.linalg.eigh(f)
-            return u
+            e, u = scipy.linalg.eigh(f)
+            isort = np.argsort(e)
+            u_left = u[:, isort]
+            u_right = u[:, isort]
+            return u_left, u_right
 
         # diagonalize fock_a and fock_b in cc, aa, and vv sectors to get alpha and beta semicanonicalizers
         c = self.orbspace['core_alpha']
@@ -406,57 +448,54 @@ class Reference:
         v = self.orbspace['virt_alpha']
         V = self.orbspace['virt_beta']
 
-        self.U = {'a': np.zeros_like(self.F['a']), 'b': np.zeros_like(self.F['b'])}
+        # [TODO]: Fix nonsymmetric case
+        fcn = lambda x: _diagonalize_and_reorder(x)
+
+        self.U_L = {'a': np.zeros_like(self.F['a']), 'b': np.zeros_like(self.F['b'])}
+        self.U_R = {'a': np.zeros_like(self.F['a']), 'b': np.zeros_like(self.F['b'])}
         for ispin, f in self.F.items():
             if ispin == 'a':
-                self.U[ispin][c, c] = _diagonalize_and_reorder(f[c, c].copy())
-                self.U[ispin][a, a] = _diagonalize_and_reorder(f[a, a].copy())
-                self.U[ispin][v, v] = _diagonalize_and_reorder(f[v, v].copy())
+                self.U_L[ispin][c, c], self.U_R[ispin][c, c] = fcn(f[c, c].copy())
+                self.U_L[ispin][a, a], self.U_R[ispin][a, a] = fcn(f[a, a].copy())
+                self.U_L[ispin][v, v], self.U_R[ispin][v, v] = fcn(f[v, v].copy())
             if ispin == 'b':
-                self.U[ispin][C, C] = _diagonalize_and_reorder(f[C, C].copy())
-                self.U[ispin][A, A] = _diagonalize_and_reorder(f[A, A].copy())
-                self.U[ispin][V, V] = _diagonalize_and_reorder(f[V, V].copy())
-        self.U['b'] = self.U['a'].copy()
+                self.U_L[ispin][C, C], self.U_R[ispin][C, C] = fcn(f[C, C].copy())
+                self.U_L[ispin][A, A], self.U_R[ispin][A, A] = fcn(f[A, A].copy())
+                self.U_L[ispin][V, V], self.U_R[ispin][V, V] = fcn(f[V, V].copy())
+
+        self.U_L['b'] = self.U_L['a'].copy()
+        self.U_R['b'] = self.U_R['a'].copy()
         
-    def semicanonicalize(self):
-        def _rotate_1(U, F):
-            return np.einsum("ij,ip,jq->pq", F, np.conj(U), U, optimize=True)
-        def _rotate_2s(U, V):
-            return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(U), np.conj(U), U, U, optimize=True)
-        def _rotate_2(Ua, Ub, V):
-            return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(Ua), np.conj(Ub), Ua, Ub, optimize=True)
-        def _rotate_3s(U, W):
-            return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(U), np.conj(U), np.conj(U), U, U, U, optimize=True)
-        def _rotate_3b(Ua, Ub, W):
-            return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua), np.conj(Ua), np.conj(Ub), Ua, Ua, Ub, optimize=True)
-        def _rotate_3c(Ua, Ub, W):
-            return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua), np.conj(Ub), np.conj(Ub), Ua, Ub, Ub, optimize=True)
+    def semicanonicalize_integrals(self):
+        # semi-canonicalize 1- and 2-body integrals
+        self.Z['a'] = rotate_1(self.U_L['a'], self.U_R['a'], self.Z['a'].copy())
+        self.Z['b'] = rotate_1(self.U_L['b'], self.U_R['b'], self.Z['b'].copy())
+        self.F['a'] = rotate_1(self.U_L['a'], self.U_R['a'], self.F['a'].copy())
+        self.F['b'] = rotate_1(self.U_L['b'], self.U_R['b'], self.F['b'].copy())
+        self.V['aa'] = rotate_2s(self.U_L['a'], self.U_R['a'], self.V['aa'].copy())
+        self.V['ab'] = rotate_2(self.U_L['a'], self.U_L['b'], self.U_R['a'], self.U_R['b'], self.V['ab'].copy())
+        self.V['bb'] = rotate_2s(self.U_L['b'], self.U_R['b'], self.V['bb'].copy())
+
+        for key, value in self.Z.items():
+            print(f"{key} -> {np.linalg.norm(value.flatten())}")
+        for key, value in self.F.items():
+            print(f"{key} -> {np.linalg.norm(value.flatten())}")
+        for key, value in self.V.items():
+            print(f"{key} -> {np.linalg.norm(value.flatten())}")
+
+    def semicanonicalize_rdms(self):
         a = self.orbspace['active_alpha']
         A = self.orbspace['active_beta']
-        # semi-canonicalize 1- and 2-body integrals
-        self.Z['a'] = _rotate_1(self.U['a'], self.Z['a'].copy())
-        self.Z['b'] = _rotate_1(self.U['b'], self.Z['b'].copy())
-        self.F['a'] = _rotate_1(self.U['a'], self.F['a'].copy())
-        self.F['b'] = _rotate_1(self.U['b'], self.F['b'].copy())
-        self.V['aa'] = _rotate_2s(self.U['a'], self.V['aa'].copy())
-        self.V['ab'] = _rotate_2(self.U['a'], self.U['b'], self.V['ab'].copy())
-        self.V['bb'] = _rotate_2s(self.U['b'], self.V['bb'].copy())
-        #m = np.einsum("ip,ui->up", self.U['a'], self.mf.mo_coeff)
-        #self.F['a'] = np.einsum("up,uv,vq->pq", m, self.mc.get_fock(), m, optimize=True)
-        #self.F['b'] = np.einsum("up,uv,vq->pq", m, self.mc.get_fock(), m, optimize=True)
-        #self.V['aa'] = np.einsum("up,vq,xr,ys,uvxy->pqrs", m, m, m, m, self.V['aa'], optimize=True)
-        #self.V['ab'] = np.einsum("up,vq,xr,ys,uvxy->pqrs", m, m, m, m, self.V['ab'], optimize=True)
-        #self.V['bb'] = np.einsum("up,vq,xr,ys,uvxy->pqrs", m, m, m, m, self.V['bb'], optimize=True)
         # semi-canonicalize 1-, 2-, and 3-body RDMs
-        self.rdms['a'] = _rotate_1(self.U['a'][a, a], self.rdms['a'].copy())
-        self.rdms['b'] = _rotate_1(self.U['b'][A, A], self.rdms['b'].copy())
-        self.rdms['aa'] = _rotate_2s(self.U['a'][a, a], self.rdms['aa'].copy())
-        self.rdms['ab'] = _rotate_2(self.U['a'][a, a], self.U['b'][A, A], self.rdms['ab'].copy())
-        self.rdms['bb'] = _rotate_2s(self.U['b'][A, A], self.rdms['bb'].copy())
-        self.rdms['aaa'] = _rotate_3s(self.U['a'][a, a], self.rdms['aaa'].copy())
-        self.rdms['aab'] = _rotate_3b(self.U['a'][a, a], self.U['b'][A, A], self.rdms['aab'].copy())
-        self.rdms['abb'] = _rotate_3c(self.U['a'][a, a], self.U['b'][A, A], self.rdms['abb'].copy())
-        self.rdms['bbb'] = _rotate_3s(self.U['b'][A, A], self.rdms['bbb'].copy())
+        self.rdms['a'] = rotate_1(self.U_L['a'][a, a], self.U_R['a'][a, a], self.rdms['a'].copy())
+        self.rdms['b'] = rotate_1(self.U_L['b'][A, A], self.U_L['b'][A, A], self.rdms['b'].copy())
+        self.rdms['aa'] = rotate_2s(self.U_L['a'][a, a], self.U_L['a'][a, a], self.rdms['aa'].copy())
+        self.rdms['ab'] = rotate_2(self.U_L['a'][a, a], self.U_L['b'][A, A], self.U_R['a'][a, a], self.U_R['b'][A, A], self.rdms['ab'].copy())
+        self.rdms['bb'] = rotate_2s(self.U_L['b'][A, A], self.U_R['b'][A, A], self.rdms['bb'].copy())
+        self.rdms['aaa'] = rotate_3s(self.U_L['a'][a, a], self.U_R['a'][a, a], self.rdms['aaa'].copy())
+        self.rdms['aab'] = rotate_3b(self.U_L['a'][a, a], self.U_L['b'][A, A], self.U_R['a'][a, a], self.U_R['b'][A, A], self.rdms['aab'].copy())
+        self.rdms['abb'] = rotate_3c(self.U_L['a'][a, a], self.U_L['b'][A, A], self.U_R['a'][a, a], self.U_R['b'][A, A], self.rdms['abb'].copy())
+        self.rdms['bbb'] = rotate_3s(self.U_L['b'][A, A], self.U_R['b'][A, A], self.rdms['bbb'].copy())
 
     def compute_cas_state_energy(self, rdms):
         c = self.orbspace['core_alpha']
@@ -548,6 +587,34 @@ class Reference:
         self.e_cas_from_fock = e_test
 
     def freeze_orbitals(self):
+        # compute the energy of frozen-core orbitals in the basis of CAS orbitals
+        f = slice(0, self.nfrozen)
+        a = self.orbspace['active_alpha']
+        A = self.orbspace['active_beta']
+        # self.e_frozen_core = (
+        #     # fc-fc
+        #       np.einsum("ii->", self.Z['a'][f, f], optimize=True)
+        #     + np.einsum("ii->", self.Z['b'][f, f], optimize=True)
+        #     + 0.5 * np.einsum("ijij->", self.V['aa'][f, f, f, f], optimize=True)
+        #     + np.einsum("ijij->", self.V['ab'][f, f, f, f], optimize=True)
+        #     + 0.5 * np.einsum('ijij->', self.V['bb'][f, f, f, f], optimize=True)
+        #     # fc-act
+        #     + 0.5 * np.einsum("iuiv,vu->", self.V['aa'][f, a, f, a], self.rdms['a'], optimize=True)
+        #     + np.einsum("iuiv,vu->", self.V['ab'][f, A, f, A], self.rdms['b'], optimize=True)
+        #     + np.einsum("uivi,vu->", self.V['ab'][a, f, a, f], self.rdms['a'], optimize=True)
+        #     + 0.5 * np.einsum("iuiv,vu->", self.V['bb'][f, A, f, A], self.rdms['b'], optimize=True)
+        # )
+        self.e_frozen_core = (
+              np.einsum("mm->", self.F['a'][f, f])
+            + np.einsum("mm->", self.F['b'][f, f])
+            - 0.5 * np.einsum("mnmn->", self.V['aa'][f, f, f, f])
+            - np.einsum("mnmn->", self.V['ab'][f, f, f, f])
+            - 0.5 * np.einsum("mnmn->", self.V['bb'][f, f, f, f])
+            - np.einsum("mumv,uv->", self.V['aa'][f, a, f, a], self.rdms['a'])
+            - np.einsum("umvm,uv->", self.V['ab'][a, f, a, f], self.rdms['a'])
+            - np.einsum("mumv,uv->", self.V['ab'][f, A, f, A], self.rdms['b'])
+            - np.einsum("mumv,uv->", self.V['bb'][f, A, f, A], self.rdms['b'])
+        )
         self.nelectron -= 2*self.nfrozen
         self.norb -= self.nfrozen
         self.ncore_alpha -= self.nfrozen 

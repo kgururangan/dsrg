@@ -35,12 +35,10 @@ def test_mrdsrg_ldsrg2_nh_1():
 
     # Create the reference
     # Pass in MO coefficients from CASSCF to use those orbitals in AO-to-MO transformation
-    ref = Reference(mc, mf, mo_coeff=mc.mo_coeff, nfrozen=0, verbose=True)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mc, mf, nfrozen=0)
 
     # Run DSRG
     driver = DSRG(ref)
-    #driver.run_ldsrg2(s=0.5, herm=False)
     driver.run_dsrg(method="ldsrg2", s=0.5, herm=False)
 
     #

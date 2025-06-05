@@ -2,8 +2,8 @@ import time
 import numpy as np
 from dsrg.utilities import regularized_denominator
 
-from dsrg.wicked_contractions.ricmrccsd_contractions import *
-from dsrg.wicked_contractions.ricmrccsd_hbar_active import *
+from dsrg.wicked_contractions.ricmrccsd_nospectators_contractions import *
+from dsrg.wicked_contractions.ricmrccsd_nospectators_hbar_active import *
 
 def build_denominators(s, eps_a, eps_b, ref):
     n = np.newaxis
@@ -47,9 +47,37 @@ def initial_guess(ref, denom, reg_denom):
     T['aa'] = ref.V['aa'][p, p, h, h] * reg_denom['aa']
     T['ab'] = ref.V['ab'][p, P, h, H] * reg_denom['ab']
     T['bb'] = ref.V['bb'][P, P, H, H] * reg_denom['bb']
+    # zero out blocks that contain all active indices
     T['aa'][pa, pa, ha, ha] *= 0.
     T['ab'][pa, pA, ha, hA] *= 0.
     T['bb'][pA, pA, hA, hA] *= 0.
+    # also zero out blocks that contain spectators        
+    T['aa'][pa, pv, ha, hc] *= 0. # av|ac
+    T['aa'][pv, pa, ha, hc] *= 0. # va|ac
+    T['aa'][pa, pv, hc, ha] *= 0. # av|ca
+    T['aa'][pv, pa, hc, ha] *= 0. # va|ca
+    T['aa'][pa, pa, ha, hc] *= 0. # aa|ac
+    T['aa'][pa, pa, hc, ha] *= 0. # aa|ca
+    T['aa'][pv, pa, ha, ha] *= 0. # va|aa
+    T['aa'][pa, pv, ha, ha] *= 0. # av|aa   
+
+    T['ab'][pa, pV, ha, hC] *= 0. # av|ac
+    # T['ab'][pv, pA, ha, hC] *= 0. # va|ac
+    # T['ab'][pa, pV, hc, hA] *= 0. # av|ca
+    T['ab'][pv, pA, hc, hA] *= 0. # va|ca
+    T['ab'][pa, pA, ha, hC] *= 0. # aa|ac
+    T['ab'][pa, pA, hc, hA] *= 0. # aa|ca
+    T['ab'][pv, pA, ha, hA] *= 0. # va|aa
+    T['ab'][pa, pV, ha, hA] *= 0. # av|aa 
+
+    T['bb'][pA, pV, hA, hC] *= 0. # av|ac
+    T['bb'][pV, pA, hA, hC] *= 0. # va|ac
+    T['bb'][pA, pV, hC, hA] *= 0. # av|ca
+    T['bb'][pV, pA, hC, hA] *= 0. # va|ca
+    T['bb'][pA, pA, hA, hC] *= 0. # aa|ac
+    T['bb'][pA, pA, hC, hA] *= 0. # aa|ca
+    T['bb'][pV, pA, hA, hA] *= 0. # va|aa
+    T['bb'][pA, pV, hA, hA] *= 0. # av|aa    
 
     # 1st-order t1
     T['a'] = (
@@ -70,33 +98,6 @@ def initial_guess(ref, denom, reg_denom):
     )
     T['b'] *= reg_denom['b']
     T['b'][pA, hA] *= 0.
-    # # also zero out blocks that contain spectators
-    # T['aa'][pa, pv, ha, hc] *= 0. # av|ac
-    # T['aa'][pv, pa, ha, hc] *= 0. # va|ac
-    # T['aa'][pa, pv, hc, ha] *= 0. # av|ca
-    # T['aa'][pv, pa, hc, ha] *= 0. # va|ca
-    # T['aa'][pa, pa, ha, hc] *= 0. # aa|ac
-    # T['aa'][pa, pa, hc, ha] *= 0. # aa|ca
-    # T['aa'][pv, pa, ha, ha] *= 0. # va|aa
-    # T['aa'][pa, pv, ha, ha] *= 0. # av|aa
-    #
-    # T['ab'][pa, pV, ha, hC] *= 0. # av|ac
-    # # T['ab'][pv, pA, ha, hC] *= 0. # va|ac
-    # # T['ab'][pa, pV, hc, hA] *= 0. # av|ca
-    # T['ab'][pv, pA, hc, hA] *= 0. # va|ca
-    # T['ab'][pa, pA, ha, hC] *= 0. # aa|ac
-    # T['ab'][pa, pA, hc, hA] *= 0. # aa|ca
-    # T['ab'][pv, pA, ha, hA] *= 0. # va|aa
-    # T['ab'][pa, pV, ha, hA] *= 0. # av|aa
-    #
-    # T['bb'][pA, pV, hA, hC] *= 0. # av|ac
-    # T['bb'][pV, pA, hA, hC] *= 0. # va|ac
-    # T['bb'][pA, pV, hC, hA] *= 0. # av|ca
-    # T['bb'][pV, pA, hC, hA] *= 0. # va|ca
-    # T['bb'][pA, pA, hA, hC] *= 0. # aa|ac
-    # T['bb'][pA, pA, hC, hA] *= 0. # aa|ca
-    # T['bb'][pV, pA, hA, hA] *= 0. # va|aa
-    # T['bb'][pA, pV, hA, hA] *= 0. # av|aa
     return T
 
 
@@ -112,7 +113,7 @@ def update_t(T, X, ref, denom, reg_denom, **kwargs):
     hC = ref.orbspace['hole_core_beta']
     pv = ref.orbspace['particle_virt_alpha']
     pV = ref.orbspace['particle_virt_beta']
-    
+
     T_old = {k: v for k, v in T.items()}
 
     T['a'] = (X['a'] + T['a'] * denom['a']) * reg_denom['a']
@@ -125,33 +126,33 @@ def update_t(T, X, ref, denom, reg_denom, **kwargs):
     T['ab'][pa, pA, ha, hA] = .0
     T['bb'] = (X['bb'] + T['bb'] * denom['bb']) * reg_denom['bb']
     T['bb'][pA, pA, hA, hA] = .0
-    # # also zero out blocks that contain spectators
-    # T['aa'][pa, pv, ha, hc] *= 0. # av|ac
-    # T['aa'][pv, pa, ha, hc] *= 0. # va|ac
-    # T['aa'][pa, pv, hc, ha] *= 0. # av|ca
-    # T['aa'][pv, pa, hc, ha] *= 0. # va|ca
-    # T['aa'][pa, pa, ha, hc] *= 0. # aa|ac
-    # T['aa'][pa, pa, hc, ha] *= 0. # aa|ca
-    # T['aa'][pv, pa, ha, ha] *= 0. # va|aa
-    # T['aa'][pa, pv, ha, ha] *= 0. # av|aa
-    #
-    # T['ab'][pa, pV, ha, hC] *= 0. # av|ac
-    # # T['ab'][pv, pA, ha, hC] *= 0. # va|ac
-    # # T['ab'][pa, pV, hc, hA] *= 0. # av|ca
-    # T['ab'][pv, pA, hc, hA] *= 0. # va|ca
-    # T['ab'][pa, pA, ha, hC] *= 0. # aa|ac
-    # T['ab'][pa, pA, hc, hA] *= 0. # aa|ca
-    # T['ab'][pv, pA, ha, hA] *= 0. # va|aa
-    # T['ab'][pa, pV, ha, hA] *= 0. # av|aa
-    #
-    # T['bb'][pA, pV, hA, hC] *= 0. # av|ac
-    # T['bb'][pV, pA, hA, hC] *= 0. # va|ac
-    # T['bb'][pA, pV, hC, hA] *= 0. # av|ca
-    # T['bb'][pV, pA, hC, hA] *= 0. # va|ca
-    # T['bb'][pA, pA, hA, hC] *= 0. # aa|ac
-    # T['bb'][pA, pA, hC, hA] *= 0. # aa|ca
-    # T['bb'][pV, pA, hA, hA] *= 0. # va|aa
-    # T['bb'][pA, pV, hA, hA] *= 0. # av|aa
+    # also zero out blocks that contain spectators        
+    T['aa'][pa, pv, ha, hc] *= 0. # av|ac
+    T['aa'][pv, pa, ha, hc] *= 0. # va|ac
+    T['aa'][pa, pv, hc, ha] *= 0. # av|ca
+    T['aa'][pv, pa, hc, ha] *= 0. # va|ca
+    T['aa'][pa, pa, ha, hc] *= 0. # aa|ac
+    T['aa'][pa, pa, hc, ha] *= 0. # aa|ca
+    T['aa'][pv, pa, ha, ha] *= 0. # va|aa
+    T['aa'][pa, pv, ha, ha] *= 0. # av|aa   
+
+    T['ab'][pa, pV, ha, hC] *= 0. # av|ac
+    # T['ab'][pv, pA, ha, hC] *= 0. # va|ac
+    # T['ab'][pa, pV, hc, hA] *= 0. # av|ca
+    T['ab'][pv, pA, hc, hA] *= 0. # va|ca
+    T['ab'][pa, pA, ha, hC] *= 0. # aa|ac
+    T['ab'][pa, pA, hc, hA] *= 0. # aa|ca
+    T['ab'][pv, pA, ha, hA] *= 0. # va|aa
+    T['ab'][pa, pV, ha, hA] *= 0. # av|aa 
+
+    T['bb'][pA, pV, hA, hC] *= 0. # av|ac
+    T['bb'][pV, pA, hA, hC] *= 0. # va|ac
+    T['bb'][pA, pV, hC, hA] *= 0. # av|ca
+    T['bb'][pV, pA, hC, hA] *= 0. # va|ca
+    T['bb'][pA, pA, hA, hC] *= 0. # aa|ac
+    T['bb'][pA, pA, hC, hA] *= 0. # aa|ca
+    T['bb'][pV, pA, hA, hA] *= 0. # va|aa
+    T['bb'][pA, pV, hA, hA] *= 0. # av|aa   
 
     # compute the change in T (residual)
     dT = {key: T[key] - T_old[key] for key in T.keys()}
@@ -218,7 +219,7 @@ def compute_hbar_active(hamiltonian, T, ref, herm):
          'aa': 0.25 * ref.V['aa'][a, a, a, a].copy(),
          'ab': ref.V['ab'][a, A, a, A].copy(),
          'bb': 0.25 * ref.V['bb'][A, A, A, A].copy()}
-    
+
     # 1-body
     _t0 = time.time()
     X = Hbar_ncomm1_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)

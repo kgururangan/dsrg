@@ -27,8 +27,7 @@ def test_mrdsrg_ldsrg2_hf():
     # Print out CASSCF orbitals
     mc.analyze()
 
-    ref = Reference(mc, mf, verbose=True, mo_coeff=mc.mo_coeff)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mc, mf, nfrozen=0)
 
     driver = DSRG(ref)
     driver.run_dsrg(method='ldsrg2', s=1.0, herm=True)

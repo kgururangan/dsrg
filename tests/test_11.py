@@ -34,8 +34,7 @@ def test_ricmrccsd1_approx_1():
     mc.analyze()
 
     # Create the reference
-    ref = Reference(mc, mf, mo_coeff=mc.mo_coeff, nfrozen=0, verbose=True)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mc, mf, nfrozen=0)
 
     # Run DSRG
     driver = RICMRCC(ref)

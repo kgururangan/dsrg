@@ -32,12 +32,10 @@ def test_mrdsrg_ldsrg2_n2():
     mc.kernel(mo)
 
     # Create the reference
-    ref = Reference(mc, mf, mo_coeff=mc.mo_coeff, nfrozen=0, verbose=True)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mc, mf, nfrozen=0)
 
     # Run DSRG
     driver = DSRG(ref)
-    # driver.run_ldsrg2(s=0.5, herm=True, max_ncomm=12)
     driver.run_dsrg(method='ldsrg2', s=0.5, herm=True)
     driver.diagonalize_hbar(herm=True)
 

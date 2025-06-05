@@ -2,25 +2,23 @@ import os
 import psutil
 import numpy as np
 
-def semicanonicalize_active(hbar_act, ref):
-    def _rotate_1(U, F):
-        return np.einsum("ij,ip,jq->pq", F, np.conj(U), U, optimize=True)
+def rotate_1(U_L, U_R, F):
+    return np.einsum("ij,ip,jq->pq", F, np.conj(U_L), U_R, optimize=True)
 
-    def _rotate_2s(U, V):
-        return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(U), np.conj(U), U, U, optimize=True)
+def rotate_2s(U_L, U_R, V):
+    return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(U_L), np.conj(U_L), U_R, U_R, optimize=True)
 
-    def _rotate_2(Ua, Ub, V):
-        return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(Ua), np.conj(Ub), Ua, Ub, optimize=True)
+def rotate_2(Ua_L, Ub_L, Ua_R, Ub_R, V):
+    return np.einsum("ijkl,ip,jq,kr,ls->pqrs", V, np.conj(Ua_L), np.conj(Ub_L), Ua_R, Ub_R, optimize=True)
 
-    a = ref.orbspace['active_alpha']
-    A = ref.orbspace['active_beta']
-    # semi-canonicalize 1- and 2-body integrals
-    hbar_act['a'] = _rotate_1(ref.U['a'][a, a], hbar_act['a'])
-    hbar_act['b'] = _rotate_1(ref.U['b'][A, A], hbar_act['b'])
-    hbar_act['aa'] = _rotate_2s(ref.U['a'][a, a], hbar_act['aa'])
-    hbar_act['ab'] = _rotate_2(ref.U['a'][a, a], ref.U['b'][A, A], hbar_act['ab'])
-    hbar_act['bb'] = _rotate_2s(ref.U['b'][A, A], hbar_act['bb'])
-    return hbar_act
+def rotate_3s(U_L, U_R, W):
+    return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(U_L), np.conj(U_L), np.conj(U_L), U_R, U_R, U_R, optimize=True)
+
+def rotate_3b(Ua_L, Ub_L, Ua_R, Ub_R, W):
+    return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua_L), np.conj(Ua_L), np.conj(Ub_L), Ua_R, Ua_R, Ub_R, optimize=True)
+
+def rotate_3c(Ua_L, Ub_L, Ua_R, Ub_R, W):
+    return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua_L), np.conj(Ub_L), np.conj(Ub_L), Ua_R, Ub_R, Ub_R, optimize=True)
 
 def flatten_dict_to_vector(d):
     return np.concatenate([v.ravel() for v in d.values()])

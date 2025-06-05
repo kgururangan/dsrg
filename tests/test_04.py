@@ -39,12 +39,13 @@ def test_mrdsrg_ldsrg2_hf():
     mycas.run()
     mycas.analyze()
 
-    ref = Reference(mycas, mf, verbose=True)
-    ref.kernel(semi=True)
+    ref = Reference.from_pyscf(mycas, mf, nfrozen=0)
+    # ref.initialize()
 
     driver = DSRG(ref)
-    driver.run_dsrg(method='ldsrg2', s=2.0, herm=True)
-    driver.diagonalize_hbar(herm=True)
+    driver.run_dsrg_relaxed(method='ldsrg2', s=2.0, herm=True)
+    #driver.run_dsrg(method='ldsrg2', s=2.0, herm=True)
+    #driver.diagonalize_hbar(herm=True)
 
     #
     # Check the results
