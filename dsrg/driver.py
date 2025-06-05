@@ -613,6 +613,7 @@ class RICMRCC:
             print("")
             print(f"    Calculation Summary: State {i}")
             print(f"    initial root {i} -> relaxed root {istate}")
+            print(f"    overlap = {overlap[i, istate]}")
             print("    ------------------------------------")
             print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
             print("    Relaxed ric-MRCC Correlation Energy: {: 20.12f}".format(self.relaxation_energy[istate] + self.correlation_energy))
