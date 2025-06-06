@@ -264,11 +264,13 @@ class Reference:
         self.cisolver.build_hamiltonian(herm=True)
         self.cisolver.diagonalize_hamiltonian(herm=True)
 
-        state_index, _ = self.get_state_indices_in_spectrum()
+        state_index, overlap = self.get_state_indices_in_spectrum()
+        print(overlap)
 
         print("   State Energies from CAS Diagonalization")
         print("   ----------------------------------------")
         for i, istate in enumerate(state_index):
+            print(f"   Overlap with initial state {i}: {overlap[i, istate]}")
             self.ci_coeff_init[:, i] = self.cisolver.coef[:, istate].copy()
             print(f"   State {istate}: Energy = {self.cisolver.total_energy[istate]}")
             self.cisolver.print_ci_vector(state=istate, prtol=0.19)
@@ -424,7 +426,9 @@ class Reference:
 
         def _diagonalize_and_reorder(f):
 
-            if np.linalg.norm(f - np.conj(f).T) > 1.0e-09: # non-Hermitian
+            herm_error = np.linalg.norm(f - np.conj(f).T)
+            # print(f"    |F - F.T| = {herm_error}")
+            if herm_error > 1.0e-09: # non-Hermitian
 
                 print("Warning: Fock matrix is not Hermitian! Diagonalizing as non-Hermitian matrix.")
 

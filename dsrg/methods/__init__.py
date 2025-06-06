@@ -3,5 +3,5 @@ MODULES = ["ldsrg2", "ldsrg2t", "ldsrg3",
            "ricmrccsd", "ricmrccsd_approx", "ricmrccsd1",
            "ricmrccsd_nospectators",
            "sqricmrccsd", "sqricmrccsd_approx",
-           "ricmrccsdt1", "ricmrccsdt1_no_act_t3_4",
-           "ricmrccsdt1_approx"]
+           "ricmrccsdt1_approx",
+           "ricmrccsd_pert_t"]

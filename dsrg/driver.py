@@ -210,21 +210,13 @@ class DSRG:
                 o[key] = np.zeros_like(o_old[key])
         return ncomm, resid
 
-    def diagonalize_hbar(self, herm, state_index=None):
+    def diagonalize_hbar(self, herm):
 
         print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
-
-        if state_index is None:
-            state_index = list(range(self.ref.nstates))
-
-        self.relaxation_energy = np.zeros(len(state_index))
-        self.total_energy_relaxed = np.zeros(len(state_index))
 
         # Slicing
         a = self.ref.orbspace['active_alpha']
         A = self.ref.orbspace['active_beta']
-        c = self.ref.orbspace['core_alpha']
-        C = self.ref.orbspace['core_beta']
         # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
         hbar_act = {'a': self.hbar['a'][a, a],
                     'b': self.hbar['b'][A, A],
@@ -235,14 +227,12 @@ class DSRG:
         print(f"    Denormal order active HBar integrals")
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
-        # Semicanonicalize the active-space HBar integrals
-        # THIS SEEMED TO MESS UP THE RELAXATION ENERGY FOR SOME REASON
-        # print(f"    Semicanonicalize denormal-ordered active HBar integrals")
-        # hbar_act['a'] = rotate_1(self.ref.U['a'][a, a], hbar_act['a'])
-        # hbar_act['b'] = rotate_1(self.ref.U['b'][A, A], hbar_act['b'])
-        # hbar_act['aa'] = rotate_2s(self.ref.U['a'][a, a], hbar_act['aa'])
-        # hbar_act['ab'] = rotate_2(self.ref.U['a'][a, a], self.ref.U['b'][A, A], hbar_act['ab'])
-        # hbar_act['bb'] = rotate_2s(self.ref.U['b'][A, A], hbar_act['bb'])
+        # print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
+        # hbar_act['a'] = rotate_1(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['a'])
+        # hbar_act['b'] = rotate_1(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['b'])
+        # hbar_act['aa'] = rotate_2s(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['aa'])
+        # hbar_act['ab'] = rotate_2(self.ref.U_L['a'][a, a], self.ref.U_L['b'][A, A], self.ref.U_R['a'][a, a], self.ref.U_R['b'][A, A], hbar_act['ab'])
+        # hbar_act['bb'] = rotate_2s(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['bb'])
         # Diagonalize Hamiltonian in the CAS space using fcipy
         self.ref.cisolver.e1int = hbar_act['a'].copy()
         self.ref.cisolver.e2int = hbar_act['ab'].copy()
@@ -253,7 +243,6 @@ class DSRG:
         self.total_energy_relaxed = self.total_energy + self.relaxation_energy
 
         state_index, overlap = self.ref.get_state_indices_in_spectrum()
-        i_ground = state_index[0]
 
         relaxation_energy = np.zeros(self.ref.nstates)
         correlation_energy = np.zeros(self.ref.nstates)
@@ -263,7 +252,7 @@ class DSRG:
             print("")
             print(f"    Calculation Summary: State {i}")
             print(f"    initial root {i} -> relaxed root {istate}")
-            print(f"    overlap = {overlap[i, istate]}")
+            print(f"    Overlap with initial state {i}: {overlap[i, istate]}")
             print("    ------------------------------------")
             print("    Relaxation Energy: {: 20.12f}".format(self.relaxation_energy[istate]))
             print("    Relaxed MR-DSRG Correlation Energy: {: 20.12f}".format(self.relaxation_energy[istate] + self.correlation_energy))
@@ -446,6 +435,9 @@ class RICMRCC:
 
     def run_ricmrcc(self, method, s, maxiter=80, herm=False, e_conv=1.0e-07, t_conv=1.0e-05, diis_size=6, out_of_core=False):
 
+        # Maximum rank that we will iterate
+        _NRANK_MAX = 3
+
         # Set hermiticity flag
         self.herm = herm
 
@@ -478,7 +470,8 @@ class RICMRCC:
         tic = time.time()
         if not self.T:
             self.T = self.initial_guess(self.ref, denom, reg_denom)
-        T_pert = deepcopy(self.T)
+        # T_pert = deepcopy(self.T)
+        T_pert = None
         toc = time.time()
         print(f"   ... initial T amplitudes: {toc - tic}s")
 
@@ -490,13 +483,13 @@ class RICMRCC:
         
         # Initialize DIIS engine
         diis_engine = DIIS(
-            ndim=numel_in_dict(self.T),
+            ndim=numel_in_dict(self.T, nrank=_NRANK_MAX),
             diis_size=diis_size,
             out_of_core=out_of_core
         )
 
-        T_shapes = {k: v.shape for k, v in self.T.items()}
-        T_sizes = {k: v.size for k, v in self.T.items()}
+        T_shapes = {k: v.shape for k, v in self.T.items() if len(k) <= _NRANK_MAX}
+        T_sizes = {k: v.size for k, v in self.T.items() if len(k) <= _NRANK_MAX}
 
         #
         # ric-MRCC iterations
@@ -665,6 +658,22 @@ class RICMRCC:
                     correlation_energy[istate, i],
                     total_energy[istate, i],
                 ))
+
+    def run_triples_correction(self, method, s):
+        if method.lower() not in MODULES:
+            raise NotImplementedError(f"Method {method.upper()} not implemented!")
+        
+        self.calc_module = import_module(f"dsrg.methods.{method.lower()}")
+        self.correction_function = getattr(self.calc_module, 'triples_correction')
+
+        E_T = self.correction_function(self.T, self.ref, self.hamiltonian, s)
+        self.correlation_energy += E_T
+        self.total_energy += E_T
+
+        print(f"   Triples Correction: {E_T}")
+        print(f"   Correlation Energy: {self.correlation_energy}")
+        print(f"   ric-MRCC[T] Total Energy: {self.total_energy}")
+
 
     def print_amplitudes(self):
 

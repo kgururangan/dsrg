@@ -32,8 +32,11 @@ def unflatten_vector_to_dict(vec, shapes, sizes):
         i += sz
     return out
 
-def numel_in_dict(d):
-    return sum([np.prod(v.shape) for v in d.values()])
+def numel_in_dict(d, nrank=-1):
+    if nrank == -1:
+        return sum([np.prod(v.shape) for v in d.values()])
+    else:
+        return sum([np.prod(v.shape) for k, v in d.items() if len(k) <= nrank])
 
 def spatial_index(p):
     if p % 2 == 0:
