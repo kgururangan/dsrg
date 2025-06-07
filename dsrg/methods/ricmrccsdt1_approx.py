@@ -207,7 +207,7 @@ def compute_residual(hamiltonian, T, ref, herm):
     return X
 
 
-def compute_hbar_active(hamiltonian, T, ref, herm, reg_denom):
+def compute_hbar_active(hamiltonian, T, ref, herm):
     # Slicing
     a = ref.orbspace['active_alpha']
     A = ref.orbspace['active_beta']
@@ -219,12 +219,12 @@ def compute_hbar_active(hamiltonian, T, ref, herm, reg_denom):
     # # Dimensions
     # nua, nub, noa, nob = ref.V['ab'][p, P, h, H].shape
 
-    # # Initial value for the residual (0 commutators)
-    # X = {'a': ref.F['a'][a, a].copy(),
-    #      'b': ref.F['b'][A, A].copy(),
-    #      'aa': 0.25 * ref.V['aa'][a, a, a, a].copy(),
-    #      'ab': ref.V['ab'][a, A, a, A].copy(),
-    #      'bb': 0.25 * ref.V['bb'][A, A, A, A].copy()}
+    # Initial value for the residual (0 commutators)
+    X = {'a': ref.F['a'][a, a].copy(),
+         'b': ref.F['b'][A, A].copy(),
+         'aa': 0.25 * ref.V['aa'][a, a, a, a].copy(),
+         'ab': ref.V['ab'][a, A, a, A].copy(),
+         'bb': 0.25 * ref.V['bb'][A, A, A, A].copy()}
     
     # X3 = {'aaa': np.zeros((nua, nua, nua, noa, noa, noa)),
     #       'aab': np.zeros((nua, nua, nub, noa, noa, nob)),
