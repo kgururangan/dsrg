@@ -1,6 +1,14 @@
+'''
+Active-space HBar for the ric-MRCCSDT-1(a) model.
+
+(neglect lambda_4 throughout)
+
+:: H1(aa) = H1(aa)[ric-MRCCSD(a)] + [H, T3]_{T3 full}
+:: H2(aaaa) <- H2(aaaa)[ric-MRCCSD(a)] + [H, T3]_{T3 full}
+:: T3 = [H, T2] * reg_denom(abcijk)
+'''
 import time
 import numpy as np
-
 
 def Hbar_ncomm1_nbody1(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
 	tic = time.time()
@@ -157,7 +165,7 @@ def Hbar_ncomm1_nbody1(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
 	X['a'] += 1.0 * np.einsum('IA,uAvI->uv', h['b'][C,V], t['ab'][pa,pV,ha,hC], optimize=True)
 	X['a'] += 0.5 * np.einsum('IUVW,VWUX,uXvI->uv', h['bb'][C,A,A,A], lambdas['bb'], t['ab'][pa,pA,ha,hC], optimize=True)
 	X['a'] += 0.5 * np.einsum('UVWA,WXUV,uAvX->uv', h['bb'][A,A,A,V], lambdas['bb'], t['ab'][pa,pV,ha,hA], optimize=True)
-    ### T3 Parts ###
+        ### T3 Parts ###
 	# A|A
 	X['b'] += 0.5 * np.einsum('uv,wx,yz,izuw,vxUiyV->UV', eta1['a'], eta1['a'], gamma1['a'], h['aa'][c,a,a,a], t['aab'][pa,pa,pA,hc,ha,hA], optimize=True)
 	X['b'] += 0.25 * np.einsum('uv,wx,ijuw,vxUijV->UV', eta1['a'], eta1['a'], h['aa'][c,c,a,a], t['aab'][pa,pa,pA,hc,hc,hA], optimize=True)
@@ -629,7 +637,108 @@ def Hbar_ncomm1_nbody2(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
 	X['aa'] += 0.5 * np.einsum('uvwa,ax->uvwx', h['aa'][a,a,a,v], t['a'][pv,ha], optimize=True)
 	X['aa'] += 0.125 * np.einsum('uvab,abwx->uvwx', h['aa'][a,a,v,v], t['aa'][pv,pv,ha,ha], optimize=True)
 	X['aa'] += 1.0 * np.einsum('uIvA,wAxI->uwvx', h['ab'][a,C,a,V], t['ab'][pa,pV,ha,hC], optimize=True)
-    ### T3 Parts ###
+	toc = time.time()
+	elapsed_time = toc - tic
+	if verbose:
+		print(f'Took {elapsed_time} seconds.')
+	return X
+
+
+def Hbar_ncomm2_nbody1(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
+	tic = time.time()
+	c = orbspace['core_alpha']
+	C = orbspace['core_beta']
+	a = orbspace['active_alpha']
+	A = orbspace['active_beta']
+	v = orbspace['virt_alpha']
+	V = orbspace['virt_beta']
+	hc = orbspace['hole_core_alpha']
+	hC = orbspace['hole_core_beta']
+	ha = orbspace['hole_active_alpha']
+	hA = orbspace['hole_active_beta']
+	pa = orbspace['particle_active_alpha']
+	pA = orbspace['particle_active_beta']
+	pv = orbspace['particle_virt_alpha']
+	pV = orbspace['particle_virt_beta']
+
+	# A|A
+	X['b'] += -1.0 * np.einsum('uv,ijua,ai,vUjV->UV', eta1['a'], h['aa'][c,c,a,v], t['a'][pv,hc], t['ab'][pa,pA,hc,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('uv,iIuA,AI,vUiV->UV', eta1['a'], h['ab'][c,C,a,V], t['b'][pV,hC], t['ab'][pa,pA,hc,hA], optimize=True)
+	X['b'] += -1.0 * np.einsum('WX,iIaW,ai,UXIV->UV', eta1['b'], h['ab'][c,C,v,A], t['a'][pv,hc], t['bb'][pA,pA,hC,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('WX,IJWA,AI,UXJV->UV', eta1['b'], h['bb'][C,C,A,V], t['b'][pV,hC], t['bb'][pA,pA,hC,hA], optimize=True)
+	X['b'] += -1.0 * np.einsum('uv,ivab,bi,aUuV->UV', gamma1['a'], h['aa'][c,a,v,v], t['a'][pv,hc], t['ab'][pv,pA,ha,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('uv,vIaA,AI,aUuV->UV', gamma1['a'], h['ab'][a,C,v,V], t['b'][pV,hC], t['ab'][pv,pA,ha,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('WX,iXaA,ai,UAVW->UV', gamma1['b'], h['ab'][c,A,v,V], t['a'][pv,hc], t['bb'][pA,pV,hA,hA], optimize=True)
+	X['b'] += -1.0 * np.einsum('WX,IXAB,BI,UAVW->UV', gamma1['b'], h['bb'][C,A,V,V], t['b'][pV,hC], t['bb'][pA,pV,hA,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('ijab,ai,bUjV->UV', h['aa'][c,c,v,v], t['a'][pv,hc], t['ab'][pv,pA,hc,hA], optimize=True)
+	X['b'] += -1.0 * np.einsum('iIaU,VI,ai->VU', h['ab'][c,C,v,A], t['b'][pA,hC], t['a'][pv,hc], optimize=True)
+	X['b'] += -1.0 * np.einsum('iIaA,ai,UAIV->UV', h['ab'][c,C,v,V], t['a'][pv,hc], t['bb'][pA,pV,hC,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('iIaA,AI,aUiV->UV', h['ab'][c,C,v,V], t['b'][pV,hC], t['ab'][pv,pA,hc,hA], optimize=True)
+	X['b'] += 1.0 * np.einsum('iUaA,AV,ai->UV', h['ab'][c,A,v,V], t['b'][pV,hA], t['a'][pv,hc], optimize=True)
+	X['b'] += 1.0 * np.einsum('IJUA,AI,VJ->VU', h['bb'][C,C,A,V], t['b'][pV,hC], t['b'][pA,hC], optimize=True)
+	X['b'] += -1.0 * np.einsum('IJAB,AI,UBJV->UV', h['bb'][C,C,V,V], t['b'][pV,hC], t['bb'][pA,pV,hC,hA], optimize=True)
+	X['b'] += -1.0 * np.einsum('IUAB,AV,BI->UV', h['bb'][C,A,V,V], t['b'][pV,hA], t['b'][pV,hC], optimize=True)
+	# a|a
+	X['a'] += 1.0 * np.einsum('wx,ijwa,ai,uxjv->uv', eta1['a'], h['aa'][c,c,a,v], t['a'][pv,hc], t['aa'][pa,pa,hc,ha], optimize=True)
+	X['a'] += -1.0 * np.einsum('wx,iIwA,AI,uxiv->uv', eta1['a'], h['ab'][c,C,a,V], t['b'][pV,hC], t['aa'][pa,pa,hc,ha], optimize=True)
+	X['a'] += 1.0 * np.einsum('UV,iIaU,ai,uVvI->uv', eta1['b'], h['ab'][c,C,v,A], t['a'][pv,hc], t['ab'][pa,pA,ha,hC], optimize=True)
+	X['a'] += -1.0 * np.einsum('UV,IJUA,AI,uVvJ->uv', eta1['b'], h['bb'][C,C,A,V], t['b'][pV,hC], t['ab'][pa,pA,ha,hC], optimize=True)
+	X['a'] += -1.0 * np.einsum('wx,ixab,bi,uavw->uv', gamma1['a'], h['aa'][c,a,v,v], t['a'][pv,hc], t['aa'][pa,pv,ha,ha], optimize=True)
+	X['a'] += 1.0 * np.einsum('wx,xIaA,AI,uavw->uv', gamma1['a'], h['ab'][a,C,v,V], t['b'][pV,hC], t['aa'][pa,pv,ha,ha], optimize=True)
+	X['a'] += 1.0 * np.einsum('UV,iVaA,ai,uAvU->uv', gamma1['b'], h['ab'][c,A,v,V], t['a'][pv,hc], t['ab'][pa,pV,ha,hA], optimize=True)
+	X['a'] += 1.0 * np.einsum('UV,IVAB,AI,uBvU->uv', gamma1['b'], h['bb'][C,A,V,V], t['b'][pV,hC], t['ab'][pa,pV,ha,hA], optimize=True)
+	X['a'] += 1.0 * np.einsum('ijua,ai,vj->vu', h['aa'][c,c,a,v], t['a'][pv,hc], t['a'][pa,hc], optimize=True)
+	X['a'] += -1.0 * np.einsum('ijab,ai,ubjv->uv', h['aa'][c,c,v,v], t['a'][pv,hc], t['aa'][pa,pv,hc,ha], optimize=True)
+	X['a'] += -1.0 * np.einsum('iuab,av,bi->uv', h['aa'][c,a,v,v], t['a'][pv,ha], t['a'][pv,hc], optimize=True)
+	X['a'] += -1.0 * np.einsum('iIuA,AI,vi->vu', h['ab'][c,C,a,V], t['b'][pV,hC], t['a'][pa,hc], optimize=True)
+	X['a'] += 1.0 * np.einsum('iIaA,ai,uAvI->uv', h['ab'][c,C,v,V], t['a'][pv,hc], t['ab'][pa,pV,ha,hC], optimize=True)
+	X['a'] += -1.0 * np.einsum('iIaA,AI,uaiv->uv', h['ab'][c,C,v,V], t['b'][pV,hC], t['aa'][pa,pv,hc,ha], optimize=True)
+	X['a'] += 1.0 * np.einsum('uIaA,AI,av->uv', h['ab'][a,C,v,V], t['b'][pV,hC], t['a'][pv,ha], optimize=True)
+	X['a'] += 1.0 * np.einsum('IJAB,AI,uBvJ->uv', h['bb'][C,C,V,V], t['b'][pV,hC], t['ab'][pa,pV,ha,hC], optimize=True)
+	toc = time.time()
+	elapsed_time = toc - tic
+	if verbose:
+		print(f'Took {elapsed_time} seconds.')
+	return X
+
+
+def Hbar_ncomm2_nbody2(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
+	tic = time.time()
+	c = orbspace['core_alpha']
+	C = orbspace['core_beta']
+	a = orbspace['active_alpha']
+	A = orbspace['active_beta']
+	v = orbspace['virt_alpha']
+	V = orbspace['virt_beta']
+	hc = orbspace['hole_core_alpha']
+	hC = orbspace['hole_core_beta']
+	ha = orbspace['hole_active_alpha']
+	hA = orbspace['hole_active_beta']
+	pa = orbspace['particle_active_alpha']
+	pA = orbspace['particle_active_beta']
+	pv = orbspace['particle_virt_alpha']
+	pV = orbspace['particle_virt_beta']
+
+	# AA|AA
+	X['bb'] += -0.5 * np.einsum('iIaU,ai,VWIX->VWUX', h['ab'][c,C,v,A], t['a'][pv,hc], t['bb'][pA,pA,hC,hA], optimize=True)
+	X['bb'] += -0.5 * np.einsum('iUaA,ai,VAWX->UVWX', h['ab'][c,A,v,V], t['a'][pv,hc], t['bb'][pA,pV,hA,hA], optimize=True)
+	X['bb'] += 0.5 * np.einsum('IJUA,AI,VWJX->VWUX', h['bb'][C,C,A,V], t['b'][pV,hC], t['bb'][pA,pA,hC,hA], optimize=True)
+	X['bb'] += 0.5 * np.einsum('IUAB,BI,VAWX->UVWX', h['bb'][C,A,V,V], t['b'][pV,hC], t['bb'][pA,pV,hA,hA], optimize=True)
+	# aA|Aa
+	X['ab'] += 1.0 * np.einsum('ijua,ai,vUjV->vUuV', h['aa'][c,c,a,v], t['a'][pv,hc], t['ab'][pa,pA,hc,hA], optimize=True)
+	X['ab'] += -1.0 * np.einsum('iuab,bi,aUvV->uUvV', h['aa'][c,a,v,v], t['a'][pv,hc], t['ab'][pv,pA,ha,hA], optimize=True)
+	X['ab'] += -1.0 * np.einsum('iIuA,AI,vUiV->vUuV', h['ab'][c,C,a,V], t['b'][pV,hC], t['ab'][pa,pA,hc,hA], optimize=True)
+	X['ab'] += -1.0 * np.einsum('iIaU,ai,uVvI->uVvU', h['ab'][c,C,v,A], t['a'][pv,hc], t['ab'][pa,pA,ha,hC], optimize=True)
+	X['ab'] += 1.0 * np.einsum('iUaA,ai,uAvV->uUvV', h['ab'][c,A,v,V], t['a'][pv,hc], t['ab'][pa,pV,ha,hA], optimize=True)
+	X['ab'] += 1.0 * np.einsum('uIaA,AI,aUvV->uUvV', h['ab'][a,C,v,V], t['b'][pV,hC], t['ab'][pv,pA,ha,hA], optimize=True)
+	X['ab'] += 1.0 * np.einsum('IJUA,AI,uVvJ->uVvU', h['bb'][C,C,A,V], t['b'][pV,hC], t['ab'][pa,pA,ha,hC], optimize=True)
+	X['ab'] += 1.0 * np.einsum('IUAB,AI,uBvV->uUvV', h['bb'][C,A,V,V], t['b'][pV,hC], t['ab'][pa,pV,ha,hA], optimize=True)
+	# aa|aa
+	X['aa'] += 0.5 * np.einsum('ijua,ai,vwjx->vwux', h['aa'][c,c,a,v], t['a'][pv,hc], t['aa'][pa,pa,hc,ha], optimize=True)
+	X['aa'] += 0.5 * np.einsum('iuab,bi,vawx->uvwx', h['aa'][c,a,v,v], t['a'][pv,hc], t['aa'][pa,pv,ha,ha], optimize=True)
+	X['aa'] += -0.5 * np.einsum('iIuA,AI,vwix->vwux', h['ab'][c,C,a,V], t['b'][pV,hC], t['aa'][pa,pa,hc,ha], optimize=True)
+	X['aa'] += -0.5 * np.einsum('uIaA,AI,vawx->uvwx', h['ab'][a,C,v,V], t['b'][pV,hC], t['aa'][pa,pv,ha,ha], optimize=True)
+        ### T3 Parts ###
 	# AA|AA
 	X['bb'] += -0.5 * np.einsum('uv,wx,xIuU,vVWwIX->VWUX', eta1['a'], gamma1['a'], h['ab'][a,C,a,A], t['abb'][pa,pA,pA,ha,hC,hA], optimize=True)
 	X['bb'] += -0.5 * np.einsum('uv,wx,xUuA,vVAwWX->UVWX', eta1['a'], gamma1['a'], h['ab'][a,A,a,V], t['abb'][pa,pA,pV,ha,hA,hA], optimize=True)
@@ -883,107 +992,6 @@ def Hbar_ncomm1_nbody2(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
 	X['aa'] += 0.25 * np.einsum('IA,uvAwxI->uvwx', h['b'][C,V], t['aab'][pa,pa,pV,ha,ha,hC], optimize=True)
 	X['aa'] += 0.125 * np.einsum('IUVW,VWUX,uvXwxI->uvwx', h['bb'][C,A,A,A], lambdas['bb'], t['aab'][pa,pa,pA,ha,ha,hC], optimize=True)
 	X['aa'] += 0.125 * np.einsum('UVWA,WXUV,uvAwxX->uvwx', h['bb'][A,A,A,V], lambdas['bb'], t['aab'][pa,pa,pV,ha,ha,hA], optimize=True)
-	toc = time.time()
-	elapsed_time = toc - tic
-	if verbose:
-		print(f'Took {elapsed_time} seconds.')
-	return X
-
-
-def Hbar_ncomm2_nbody1(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
-	tic = time.time()
-	c = orbspace['core_alpha']
-	C = orbspace['core_beta']
-	a = orbspace['active_alpha']
-	A = orbspace['active_beta']
-	v = orbspace['virt_alpha']
-	V = orbspace['virt_beta']
-	hc = orbspace['hole_core_alpha']
-	hC = orbspace['hole_core_beta']
-	ha = orbspace['hole_active_alpha']
-	hA = orbspace['hole_active_beta']
-	pa = orbspace['particle_active_alpha']
-	pA = orbspace['particle_active_beta']
-	pv = orbspace['particle_virt_alpha']
-	pV = orbspace['particle_virt_beta']
-
-	# A|A
-	X['b'] += -1.0 * np.einsum('uv,ijua,ai,vUjV->UV', eta1['a'], h['aa'][c,c,a,v], t['a'][pv,hc], t['ab'][pa,pA,hc,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('uv,iIuA,AI,vUiV->UV', eta1['a'], h['ab'][c,C,a,V], t['b'][pV,hC], t['ab'][pa,pA,hc,hA], optimize=True)
-	X['b'] += -1.0 * np.einsum('WX,iIaW,ai,UXIV->UV', eta1['b'], h['ab'][c,C,v,A], t['a'][pv,hc], t['bb'][pA,pA,hC,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('WX,IJWA,AI,UXJV->UV', eta1['b'], h['bb'][C,C,A,V], t['b'][pV,hC], t['bb'][pA,pA,hC,hA], optimize=True)
-	X['b'] += -1.0 * np.einsum('uv,ivab,bi,aUuV->UV', gamma1['a'], h['aa'][c,a,v,v], t['a'][pv,hc], t['ab'][pv,pA,ha,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('uv,vIaA,AI,aUuV->UV', gamma1['a'], h['ab'][a,C,v,V], t['b'][pV,hC], t['ab'][pv,pA,ha,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('WX,iXaA,ai,UAVW->UV', gamma1['b'], h['ab'][c,A,v,V], t['a'][pv,hc], t['bb'][pA,pV,hA,hA], optimize=True)
-	X['b'] += -1.0 * np.einsum('WX,IXAB,BI,UAVW->UV', gamma1['b'], h['bb'][C,A,V,V], t['b'][pV,hC], t['bb'][pA,pV,hA,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('ijab,ai,bUjV->UV', h['aa'][c,c,v,v], t['a'][pv,hc], t['ab'][pv,pA,hc,hA], optimize=True)
-	X['b'] += -1.0 * np.einsum('iIaU,VI,ai->VU', h['ab'][c,C,v,A], t['b'][pA,hC], t['a'][pv,hc], optimize=True)
-	X['b'] += -1.0 * np.einsum('iIaA,ai,UAIV->UV', h['ab'][c,C,v,V], t['a'][pv,hc], t['bb'][pA,pV,hC,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('iIaA,AI,aUiV->UV', h['ab'][c,C,v,V], t['b'][pV,hC], t['ab'][pv,pA,hc,hA], optimize=True)
-	X['b'] += 1.0 * np.einsum('iUaA,AV,ai->UV', h['ab'][c,A,v,V], t['b'][pV,hA], t['a'][pv,hc], optimize=True)
-	X['b'] += 1.0 * np.einsum('IJUA,AI,VJ->VU', h['bb'][C,C,A,V], t['b'][pV,hC], t['b'][pA,hC], optimize=True)
-	X['b'] += -1.0 * np.einsum('IJAB,AI,UBJV->UV', h['bb'][C,C,V,V], t['b'][pV,hC], t['bb'][pA,pV,hC,hA], optimize=True)
-	X['b'] += -1.0 * np.einsum('IUAB,AV,BI->UV', h['bb'][C,A,V,V], t['b'][pV,hA], t['b'][pV,hC], optimize=True)
-	# a|a
-	X['a'] += 1.0 * np.einsum('wx,ijwa,ai,uxjv->uv', eta1['a'], h['aa'][c,c,a,v], t['a'][pv,hc], t['aa'][pa,pa,hc,ha], optimize=True)
-	X['a'] += -1.0 * np.einsum('wx,iIwA,AI,uxiv->uv', eta1['a'], h['ab'][c,C,a,V], t['b'][pV,hC], t['aa'][pa,pa,hc,ha], optimize=True)
-	X['a'] += 1.0 * np.einsum('UV,iIaU,ai,uVvI->uv', eta1['b'], h['ab'][c,C,v,A], t['a'][pv,hc], t['ab'][pa,pA,ha,hC], optimize=True)
-	X['a'] += -1.0 * np.einsum('UV,IJUA,AI,uVvJ->uv', eta1['b'], h['bb'][C,C,A,V], t['b'][pV,hC], t['ab'][pa,pA,ha,hC], optimize=True)
-	X['a'] += -1.0 * np.einsum('wx,ixab,bi,uavw->uv', gamma1['a'], h['aa'][c,a,v,v], t['a'][pv,hc], t['aa'][pa,pv,ha,ha], optimize=True)
-	X['a'] += 1.0 * np.einsum('wx,xIaA,AI,uavw->uv', gamma1['a'], h['ab'][a,C,v,V], t['b'][pV,hC], t['aa'][pa,pv,ha,ha], optimize=True)
-	X['a'] += 1.0 * np.einsum('UV,iVaA,ai,uAvU->uv', gamma1['b'], h['ab'][c,A,v,V], t['a'][pv,hc], t['ab'][pa,pV,ha,hA], optimize=True)
-	X['a'] += 1.0 * np.einsum('UV,IVAB,AI,uBvU->uv', gamma1['b'], h['bb'][C,A,V,V], t['b'][pV,hC], t['ab'][pa,pV,ha,hA], optimize=True)
-	X['a'] += 1.0 * np.einsum('ijua,ai,vj->vu', h['aa'][c,c,a,v], t['a'][pv,hc], t['a'][pa,hc], optimize=True)
-	X['a'] += -1.0 * np.einsum('ijab,ai,ubjv->uv', h['aa'][c,c,v,v], t['a'][pv,hc], t['aa'][pa,pv,hc,ha], optimize=True)
-	X['a'] += -1.0 * np.einsum('iuab,av,bi->uv', h['aa'][c,a,v,v], t['a'][pv,ha], t['a'][pv,hc], optimize=True)
-	X['a'] += -1.0 * np.einsum('iIuA,AI,vi->vu', h['ab'][c,C,a,V], t['b'][pV,hC], t['a'][pa,hc], optimize=True)
-	X['a'] += 1.0 * np.einsum('iIaA,ai,uAvI->uv', h['ab'][c,C,v,V], t['a'][pv,hc], t['ab'][pa,pV,ha,hC], optimize=True)
-	X['a'] += -1.0 * np.einsum('iIaA,AI,uaiv->uv', h['ab'][c,C,v,V], t['b'][pV,hC], t['aa'][pa,pv,hc,ha], optimize=True)
-	X['a'] += 1.0 * np.einsum('uIaA,AI,av->uv', h['ab'][a,C,v,V], t['b'][pV,hC], t['a'][pv,ha], optimize=True)
-	X['a'] += 1.0 * np.einsum('IJAB,AI,uBvJ->uv', h['bb'][C,C,V,V], t['b'][pV,hC], t['ab'][pa,pV,ha,hC], optimize=True)
-	toc = time.time()
-	elapsed_time = toc - tic
-	if verbose:
-		print(f'Took {elapsed_time} seconds.')
-	return X
-
-
-def Hbar_ncomm2_nbody2(X, h, t, gamma1, eta1, lambdas, orbspace, verbose=False):
-	tic = time.time()
-	c = orbspace['core_alpha']
-	C = orbspace['core_beta']
-	a = orbspace['active_alpha']
-	A = orbspace['active_beta']
-	v = orbspace['virt_alpha']
-	V = orbspace['virt_beta']
-	hc = orbspace['hole_core_alpha']
-	hC = orbspace['hole_core_beta']
-	ha = orbspace['hole_active_alpha']
-	hA = orbspace['hole_active_beta']
-	pa = orbspace['particle_active_alpha']
-	pA = orbspace['particle_active_beta']
-	pv = orbspace['particle_virt_alpha']
-	pV = orbspace['particle_virt_beta']
-
-	# AA|AA
-	X['bb'] += -0.5 * np.einsum('iIaU,ai,VWIX->VWUX', h['ab'][c,C,v,A], t['a'][pv,hc], t['bb'][pA,pA,hC,hA], optimize=True)
-	X['bb'] += -0.5 * np.einsum('iUaA,ai,VAWX->UVWX', h['ab'][c,A,v,V], t['a'][pv,hc], t['bb'][pA,pV,hA,hA], optimize=True)
-	X['bb'] += 0.5 * np.einsum('IJUA,AI,VWJX->VWUX', h['bb'][C,C,A,V], t['b'][pV,hC], t['bb'][pA,pA,hC,hA], optimize=True)
-	X['bb'] += 0.5 * np.einsum('IUAB,BI,VAWX->UVWX', h['bb'][C,A,V,V], t['b'][pV,hC], t['bb'][pA,pV,hA,hA], optimize=True)
-	# aA|Aa
-	X['ab'] += 1.0 * np.einsum('ijua,ai,vUjV->vUuV', h['aa'][c,c,a,v], t['a'][pv,hc], t['ab'][pa,pA,hc,hA], optimize=True)
-	X['ab'] += -1.0 * np.einsum('iuab,bi,aUvV->uUvV', h['aa'][c,a,v,v], t['a'][pv,hc], t['ab'][pv,pA,ha,hA], optimize=True)
-	X['ab'] += -1.0 * np.einsum('iIuA,AI,vUiV->vUuV', h['ab'][c,C,a,V], t['b'][pV,hC], t['ab'][pa,pA,hc,hA], optimize=True)
-	X['ab'] += -1.0 * np.einsum('iIaU,ai,uVvI->uVvU', h['ab'][c,C,v,A], t['a'][pv,hc], t['ab'][pa,pA,ha,hC], optimize=True)
-	X['ab'] += 1.0 * np.einsum('iUaA,ai,uAvV->uUvV', h['ab'][c,A,v,V], t['a'][pv,hc], t['ab'][pa,pV,ha,hA], optimize=True)
-	X['ab'] += 1.0 * np.einsum('uIaA,AI,aUvV->uUvV', h['ab'][a,C,v,V], t['b'][pV,hC], t['ab'][pv,pA,ha,hA], optimize=True)
-	X['ab'] += 1.0 * np.einsum('IJUA,AI,uVvJ->uVvU', h['bb'][C,C,A,V], t['b'][pV,hC], t['ab'][pa,pA,ha,hC], optimize=True)
-	X['ab'] += 1.0 * np.einsum('IUAB,AI,uBvV->uUvV', h['bb'][C,A,V,V], t['b'][pV,hC], t['ab'][pa,pV,ha,hA], optimize=True)
-	# aa|aa
-	X['aa'] += 0.5 * np.einsum('ijua,ai,vwjx->vwux', h['aa'][c,c,a,v], t['a'][pv,hc], t['aa'][pa,pa,hc,ha], optimize=True)
-	X['aa'] += 0.5 * np.einsum('iuab,bi,vawx->uvwx', h['aa'][c,a,v,v], t['a'][pv,hc], t['aa'][pa,pv,ha,ha], optimize=True)
-	X['aa'] += -0.5 * np.einsum('iIuA,AI,vwix->vwux', h['ab'][c,C,a,V], t['b'][pV,hC], t['aa'][pa,pa,hc,ha], optimize=True)
-	X['aa'] += -0.5 * np.einsum('uIaA,AI,vawx->uvwx', h['ab'][a,C,v,V], t['b'][pV,hC], t['aa'][pa,pv,ha,ha], optimize=True)
 	toc = time.time()
 	elapsed_time = toc - tic
 	if verbose:

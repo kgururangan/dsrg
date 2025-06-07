@@ -3,7 +3,7 @@ import numpy as np
 from dsrg.utilities import regularized_denominator
 
 from dsrg.wicked_contractions.ricmrccsdt1_approx_contractions import *
-# from dsrg.wicked_contractions.ricmrccsdt1_approx_hbar_active_bak import *
+from dsrg.wicked_contractions.ricmrccsdt1_approx_hbar_active import *
 
 
 def build_denominators(s, eps_a, eps_b, ref):
@@ -207,32 +207,55 @@ def compute_residual(hamiltonian, T, ref, herm):
     return X
 
 
-# def compute_hbar_active(hamiltonian, T, ref, herm):
-#     # Slicing
-#     a = ref.orbspace['active_alpha']
-#     A = ref.orbspace['active_beta']
+def compute_hbar_active(hamiltonian, T, ref, herm, reg_denom):
+    # Slicing
+    a = ref.orbspace['active_alpha']
+    A = ref.orbspace['active_beta']
+    # ha = ref.orbspace['hole_active_alpha']
+    # pa = ref.orbspace['particle_active_alpha']
+    # hA = ref.orbspace['hole_active_beta']
+    # pA = ref.orbspace['particle_active_beta']
 
-#     # Initial value for the residual (0 commutators)
-#     X = {'a': ref.F['a'][a, a].copy(),
-#          'b': ref.F['b'][A, A].copy(),
-#          'aa': 0.25 * ref.V['aa'][a, a, a, a].copy(),
-#          'ab': ref.V['ab'][a, A, a, A].copy(),
-#          'bb': 0.25 * ref.V['bb'][A, A, A, A].copy()}
+    # # Dimensions
+    # nua, nub, noa, nob = ref.V['ab'][p, P, h, H].shape
 
-#     # 1-body
-#     _t0 = time.time()
-#     X = Hbar_ncomm1_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-#     X = Hbar_ncomm2_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-#     # print(f"time for onebody {time.time() - _t0}")
-#     # 2-body
-#     _t0 = time.time()
-#     X = Hbar_ncomm1_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-#     X = Hbar_ncomm2_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
-#     # print(f"time for twobody {time.time() - _t0}")
+    # # Initial value for the residual (0 commutators)
+    # X = {'a': ref.F['a'][a, a].copy(),
+    #      'b': ref.F['b'][A, A].copy(),
+    #      'aa': 0.25 * ref.V['aa'][a, a, a, a].copy(),
+    #      'ab': ref.V['ab'][a, A, a, A].copy(),
+    #      'bb': 0.25 * ref.V['bb'][A, A, A, A].copy()}
     
-#     # antisymmetrize twobody
-#     X['aa'] -= X['aa'].transpose(1, 0, 2, 3)
-#     X['aa'] -= X['aa'].transpose(0, 1, 3, 2)
-#     X['bb'] -= X['bb'].transpose(1, 0, 2, 3)
-#     X['bb'] -= X['bb'].transpose(0, 1, 3, 2)
-#     return X
+    # X3 = {'aaa': np.zeros((nua, nua, nua, noa, noa, noa)),
+    #       'aab': np.zeros((nua, nua, nub, noa, noa, nob)),
+    #       'abb': np.zeros((nua, nub, nub, noa, nob, nob)),
+    #       'bbb': np.zeros((nub, nub, nub, nob, nob, nob))}
+    
+    # # For consistency, recompute T3
+    # X3 = H_T_ncomm1_nbody3(X3, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    # T['aaa'] = X3['aaa'] * reg_denom['aaa']
+    # T['aaa'][pa, pa, pa, ha, ha, ha] = .0
+    # T['aab'] = X3['aab'] * reg_denom['aab']
+    # T['aab'][pa, pa, pA, ha, ha, hA] = .0
+    # T['abb'] = X3['abb'] * reg_denom['abb']
+    # T['abb'][pa, pA, pA, ha, hA, hA] = .0
+    # T['bbb'] = X3['bbb'] * reg_denom['bbb']
+    # T['bbb'][pA, pA, pA, hA, hA, hA] = .0
+
+    # 1-body
+    _t0 = time.time()
+    X = Hbar_ncomm1_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = Hbar_ncomm2_nbody1(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    # print(f"time for onebody {time.time() - _t0}")
+    # 2-body
+    _t0 = time.time()
+    X = Hbar_ncomm1_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    X = Hbar_ncomm2_nbody2(X, hamiltonian, T, ref.gam1, ref.eta1, ref.lambdas, ref.orbspace)
+    # print(f"time for twobody {time.time() - _t0}")
+    
+    # antisymmetrize twobody
+    X['aa'] -= X['aa'].transpose(1, 0, 2, 3)
+    X['aa'] -= X['aa'].transpose(0, 1, 3, 2)
+    X['bb'] -= X['bb'].transpose(1, 0, 2, 3)
+    X['bb'] -= X['bb'].transpose(0, 1, 3, 2)
+    return X

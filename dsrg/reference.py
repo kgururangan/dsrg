@@ -265,7 +265,6 @@ class Reference:
         self.cisolver.diagonalize_hamiltonian(herm=True)
 
         state_index, overlap = self.get_state_indices_in_spectrum()
-        print(overlap)
 
         print("   State Energies from CAS Diagonalization")
         print("   ----------------------------------------")
