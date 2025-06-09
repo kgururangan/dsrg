@@ -1,13 +1,11 @@
 import time
 from importlib import import_module
 import numpy as np
-from copy import deepcopy
 
 from dsrg.methods import MODULES
 from dsrg.utilities import (get_memory_usage,
                             numel_in_dict,
-                            unflatten_vector_to_dict,
-                            rotate_1, rotate_2, rotate_2s, rotate_3b, rotate_3c, rotate_3s)
+                            unflatten_vector_to_dict)
 from dsrg.diis import DIIS
 from dsrg.gno import denormal_order_ints
 
@@ -421,6 +419,10 @@ class RICMRCC:
             self.build_hbar_active = getattr(self.calc_module, 'compute_hbar_active')
         except AttributeError:
             self.build_hbar_active = None
+        try:
+            self.build_hbar = getattr(self.calc_module, 'compute_hbar')
+        except AttributeError:
+            self.build_hbar = None
 
 
     def initialize_hbar(self):
@@ -556,7 +558,15 @@ class RICMRCC:
         print("    ric-MRCC calculation completed in {:.2f}m {:.2f}s".format(minutes, seconds))
         print(f"    Memory usage: {get_memory_usage()} MB")
         print("")
-        
+
+
+    def compute_hbar(self, herm):
+        print(f"     ==> Constructing Similarity-Transformed Hamiltonian <==")
+        print("    Building 1- and 2-body components of HBar... ", end='')
+        _t0 = time.time()
+        self.hamiltonian = self.build_hbar(self.hamiltonian, self.T, self.ref, self.herm)
+        print(f"   {time.time() - _t0} seconds\n")
+        print("   Hamiltonian attribute has been overwritten!")
 
     def diagonalize_hbar(self, herm):
         print(f"     ==> Similarity-Transformed Hamiltonian Diagonalization <==")
