@@ -1,19 +1,15 @@
 import time
 import numpy as np
 import scipy
+
 from dsrg.pyscf_tools import make_casci_rdm123s, make_casci_rdm123, get_pyscf_orbsym, make_hf_integrals
 from dsrg.utilities import rotate_1, rotate_2, rotate_2s, rotate_3b, rotate_3c, rotate_3s
-try:
-    from fcipy.driver import Driver as CI
-    from fcipy.system import System as CI_system
-except ImportError:
-    print("FCIpy not installed - you will not be able to run relaxed or excited-state calculatiosn!")
-    pass
+
+from fcipy.driver import Driver as CI
+from fcipy.system import System as CI_system
 
 
-# [TODO]: Change how semicanonicalization is handled. In relaxed calculations, the semicanonicalizer
-# changes based on how the one-body active integrals change. We sould separate semicanonicalization
-# of integrals and RDMs.
+
 class Reference:
 
     @classmethod
@@ -40,7 +36,7 @@ class Reference:
 
         ci0 = np.array(ci0).T  # shape (ndet, nstates)
 
-        assert ci0.shape[1] == len(sa_weights)
+        assert ci0.shape[1] == len(sa_weights), "Number of CI vectors doesn't match number of state-averaging weights!"
 
         ref = cls(
             e1int_ao, e2int_ao, mo_coeff, nuclear_repulsion,
@@ -184,10 +180,7 @@ class Reference:
         print("")
         print("    State-Averaged CAS Energy (from RDMs) = ", self.e_cas)
         print("    State-Averaged CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
-        try:
-            assert np.allclose(self.e_cas, self.e_cas_from_fock, atol=1.0e-06, rtol=1.0e-06)
-        except AssertionError:
-            raise ValueError("CAS energy from RDMs does not match CAS energy from Fock!")
+        assert np.allclose(self.e_cas, self.e_cas_from_fock, atol=1.0e-06, rtol=1.0e-06), "CAS energy from RDMs does not match CAS energy from Fock!"
 
     def ao_to_mo(self):
         """Transform the one- and two-electron integrals to the MO basis."""
@@ -229,10 +222,7 @@ class Reference:
         print("")
         print("    State-Averaged CAS Energy (from RDMs) = ", self.e_cas)
         print("    State-Averaged CAS (from RDMs, Fock) = ", self.e_cas_from_fock)
-        try:
-            assert np.allclose(self.e_cas, self.e_cas_from_fock, atol=1.0e-06, rtol=1.0e-06)
-        except AssertionError:
-            raise ValueError("CAS energy from RDMs does not match CAS energy from Fock!")
+        assert np.allclose(self.e_cas, self.e_cas_from_fock, atol=1.0e-06, rtol=1.0e-06), "CAS energy from RDMs does not match CAS energy from Fock!"
 
     def get_state_indices_in_spectrum(self):
         overlap = np.dot(self.ci_coeff_init.T, self.cisolver.coef)
@@ -241,8 +231,8 @@ class Reference:
 
     def initialize_cisolver(self):
         # Important to copy one- and two-electron integrals - take only hole part (core + active)
-        assert self.ncore_alpha == self.ncore_beta
-        assert self.nact_alpha == self.nact_beta
+        assert self.ncore_alpha == self.ncore_beta, "The core orbitals should be doubly occupied!"
+        assert self.nact_alpha == self.nact_beta, "[fcipy]: ncore_alpha != ncore_alpha, fcipy only supports closed shells."
         a = self.orbspace['active_alpha']
         A = self.orbspace['active_beta']
         h = self.orbspace['hole_alpha']
@@ -426,49 +416,25 @@ class Reference:
         def _diagonalize_and_reorder(f):
 
             herm_error = np.linalg.norm(f - np.conj(f).T)
-            # print(f"    |F - F.T| = {herm_error}")
             if herm_error > 1.0e-09: # non-Hermitian
 
-                print("Warning: Fock matrix is not Hermitian! Diagonalizing as non-Hermitian matrix.")
+                # print("Warning: Fock matrix is not Hermitian! Diagonalizing as non-Hermitian matrix.")
 
                 e, u_left, u_right = scipy.linalg.eig(f, left=True, right=True)
                 isort = np.argsort(np.real(e))
                 u_left = u_left[:, isort]
                 u_right = u_right[:, isort]
 
-                # Why is this throwing for virtuals?
-                # test = np.dot(np.conj(u_left).T, u_right)
-                # for i in range(test.shape[0]):
-                #     u_left[:, i] /= test[i, i]
+                # Biorthonormalize L and R manually
+                M = np.conj(u_left).T @ u_right
+                M_L, M_U = scipy.linalg.lu(M, permute_l=True, overwrite_a=True, check_finite=False)
+                u_left = scipy.linalg.inv(M_L, overwrite_a=True, check_finite=False) @ u_left
+                u_right = u_right @ scipy.linalg.inv(M_U, overwrite_a=True, check_finite=False)
 
-                n = e.shape[0]
-                for i in range(n):
-                    # (a) normalize the i-th pair so that <U_L[:,i] | U_R[:,i]> = 1
-                    scale = np.vdot(u_left[:, i], u_right[:, i])   # vdot = conj(U_L[:,i]) @ U_R[:,i]
-                    u_left[:, i] /= scale
-
-                    # (b) orthogonalize U_L[:, i] against all previously fixed U_R[:, j], j < i
-                    for j in range(i):
-                        # project out any component of U_R[:, j] from U_L[:, i]
-                        coeff = np.vdot(u_left[:, i], u_right[:, j])
-                        u_left[:, i] -= coeff * u_left[:, j]
-
-                    # (c) Now enforce <U_L[:,i] | U_R[:,i]> = 1 again (since step (b) can re‐introduce
-                    #     a small scaling error)
-                    scale2 = np.vdot(u_left[:, i], u_right[:, i])
-                    u_left[:, i] /= scale2
-
-                test = np.dot(np.conj(u_left).T, u_right)
-
-                print(np.linalg.norm(test - np.eye(u_left.shape[1])))
-                try:
-                    assert np.allclose(test, np.eye(u_left.shape[1]), atol=1.0e-09, rtol=1.0e-09)
-                except AssertionError:
-                    "Left and right eigenvectors are not orthogonal!"
-                    for i in range(f.shape[0]):
-                        for j in range(f.shape[1]):
-                            print(f"L*R[{i}, {j}] = {test[i, j]}")
-
+                # Check biorthonormality
+                LR = np.dot(np.conj(u_left).T, u_right)
+                assert np.allclose(LR, np.eye(u_left.shape[1]), atol=1.0e-09, rtol=1.0e-09), "Left- and right-semicanonicalization matrices are not biorthonormal!"
+    
             else: # Hermitian
                 e, u = scipy.linalg.eigh(f)
                 isort = np.argsort(e)
@@ -579,7 +545,8 @@ class Reference:
         )
 
         e_test2 = np.dot(self.sa_weights, self.cas_state_energies)
-        assert np.allclose(e_test, e_test2, atol=1.0e-08, rtol=1.0e-08)
+        print(e_test, e_test2)
+        assert np.allclose(e_test, e_test2, atol=1.0e-08, rtol=1.0e-08), "CAS energies pre- and post-semicanonicalization don't match!"
         self.e_cas = e_test
 
     def compute_cas_energy_from_fock(self):
@@ -607,17 +574,6 @@ class Reference:
           + 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], self.lambdas['bb'])
           + self.nuclear_repulsion
         )
-        # Using full gamma and eta matrices
-        #
-        #np.einsum("pq,pq->", self.F['a'], self.gam1_full['a'], optimize=True)
-        #+ np.einsum("pq,pq->", self.F['b'], self.gam1_full['b'], optimize=True)
-        #- 0.5 * np.einsum("pqrs,pr,qs->", self.V['aa'], self.gam1_full['a'], self.gam1_full['a'], optimize=True)
-        #- np.einsum("pqrs,pr,qs->", self.V['ab'], self.gam1_full['a'], self.gam1_full['b'], optimize=True)
-        #- 0.5 * np.einsum("pqrs,pr,qs->", self.V['bb'], self.gam1_full['b'], self.gam1_full['b'], optimize=True)
-        #+ 0.25 * np.einsum("uvxy,uvxy->", self.V['aa'][a, a, a, a], self.lambdas['aa'])
-        #+ np.einsum("uvxy,uvxy->", self.V['ab'][a, A, a, A], self.lambdas['ab'])
-        #+ 0.25 * np.einsum("uvxy,uvxy->", self.V['bb'][A, A, A, A], self.lambdas['bb'])
-        #+ self.nuclear_repulsion
         self.e_cas_from_fock = e_test
 
     def freeze_orbitals(self):
