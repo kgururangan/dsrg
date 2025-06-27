@@ -6,6 +6,7 @@ from dsrg.methods import MODULES
 from dsrg.utilities import (get_memory_usage,
                             numel_in_dict,
                             unflatten_vector_to_dict)
+from dsrg.utilities import inv_rotate_1, inv_rotate_2, inv_rotate_2s
 from dsrg.diis import DIIS
 from dsrg.gno import denormal_order_ints
 
@@ -225,12 +226,13 @@ class DSRG:
         print(f"    Denormal order active HBar integrals")
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
-        # print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
-        # hbar_act['a'] = rotate_1(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['a'])
-        # hbar_act['b'] = rotate_1(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['b'])
-        # hbar_act['aa'] = rotate_2s(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['aa'])
-        # hbar_act['ab'] = rotate_2(self.ref.U_L['a'][a, a], self.ref.U_L['b'][A, A], self.ref.U_R['a'][a, a], self.ref.U_R['b'][A, A], hbar_act['ab'])
-        # hbar_act['bb'] = rotate_2s(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['bb'])
+        print(f"    Rotate active HBar out of semicanonical basis...")
+        hbar_act['a'] = inv_rotate_1(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['a'])
+        hbar_act['b'] = inv_rotate_1(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['b'])
+        hbar_act['aa'] = inv_rotate_2s(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['aa'])
+        hbar_act['ab'] = inv_rotate_2(self.ref.U_L['a'][a, a], self.ref.U_L['b'][A, A], self.ref.U_R['a'][a, a], self.ref.U_R['b'][A, A], hbar_act['ab'])
+        hbar_act['bb'] = inv_rotate_2s(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['bb'])
+
         # Diagonalize Hamiltonian in the CAS space using fcipy
         self.ref.cisolver.e1int = hbar_act['a'].copy()
         self.ref.cisolver.e2int = hbar_act['ab'].copy()
@@ -256,7 +258,8 @@ class DSRG:
             print("    Relaxed MR-DSRG Correlation Energy: {: 20.12f}".format(self.relaxation_energy[istate] + self.correlation_energy))
             print("    Relaxed MR-DSRG Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
-
+            # save the CI vector as the initial guess for the next iteration
+            self.ref.ci_coeff_init[:, i] = self.ref.cisolver.coef[:, istate].copy()
             # record energies
             relaxation_energy[i] = self.relaxation_energy[istate]
             correlation_energy[i] = self.relaxation_energy[istate] + self.correlation_energy
@@ -539,6 +542,7 @@ class RICMRCC:
             it += 1
         else:
             print("   ric-MRCC did not converge")
+
         # Record the energy
         self.correlation_energy = energy
         self.total_energy = self.correlation_energy + self.ref.e_cas
@@ -577,23 +581,30 @@ class RICMRCC:
         C = self.ref.orbspace['core_beta']
         self.relaxation_energy = np.zeros(self.ref.nstates)
         self.total_energy_relaxed = np.zeros(self.ref.nstates)
-        # [TODO]: Construct the entire hole 1- and 2-body hbars. This may improve things.
         # Obtain the similarity-transformed Hamiltonian (1- and 2-body) in the active space
         print("    Building 1- and 2-body components of HBar in the active space... ", end='')
         _t0 = time.time()
         hbar_act = self.build_hbar_active(self.hamiltonian, self.T, self.ref, self.herm)
+        # if herm:
+        #     print(f"symmetrizing active-space Hbar")
+        #     hbar_act['a'] += hbar_act['a'].conj().T
+        #     hbar_act['b'] += hbar_act['b'].conj().T
+        #     hbar_act['aa'] += hbar_act['aa'].conj().transpose(2, 3, 0, 1)
+        #     hbar_act['ab'] += hbar_act['ab'].conj().transpose(2, 3, 0, 1)
+        #     hbar_act['bb'] += hbar_act['bb'].conj().transpose(2, 3, 0, 1)
         print(f"   {time.time() - _t0} seconds\n")
         # Denormal order the Hbar integrals
         print(f"    Denormal order active HBar integrals...")
         hbar_act, e_scalar = denormal_order_ints(hbar_act, self.ref)
         print(f"    <HBar> = {e_scalar}")
         # Semicanonicalize the active-space integrals
-        # print(f"    Semicanonicalize denormal-ordered active HBar integrals...")
-        # hbar_act['a'] = rotate_1(self.ref.U['a'][a, a], hbar_act['a'])
-        # hbar_act['b'] = rotate_1(self.ref.U['b'][A, A], hbar_act['b'])
-        # hbar_act['aa'] = rotate_2s(self.ref.U['a'][a, a], hbar_act['aa'])
-        # hbar_act['ab'] = rotate_2(self.ref.U['a'][a, a], self.ref.U['b'][A, A], hbar_act['ab'])
-        # hbar_act['bb'] = rotate_2s(self.ref.U['b'][A, A], hbar_act['bb'])
+        print(f"    Rotate active HBar out of semicanonical basis...")
+        hbar_act['a'] = inv_rotate_1(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['a'])
+        hbar_act['b'] = inv_rotate_1(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['b'])
+        hbar_act['aa'] = inv_rotate_2s(self.ref.U_L['a'][a, a], self.ref.U_R['a'][a, a], hbar_act['aa'])
+        hbar_act['ab'] = inv_rotate_2(self.ref.U_L['a'][a, a], self.ref.U_L['b'][A, A], self.ref.U_R['a'][a, a], self.ref.U_R['b'][A, A], hbar_act['ab'])
+        hbar_act['bb'] = inv_rotate_2s(self.ref.U_L['b'][A, A], self.ref.U_R['b'][A, A], hbar_act['bb'])
+
         # Diagonalize Hamiltonian in the CAS space using fcipy
         self.ref.cisolver.e1int = hbar_act['a'].copy()
         self.ref.cisolver.e2int = hbar_act['ab'].copy()
@@ -612,6 +623,10 @@ class RICMRCC:
         correlation_energy = np.zeros(self.ref.nstates)
         total_energy_relaxed = np.zeros(self.ref.nstates)
 
+        # print(self.total_energy_relaxed)
+        # print("WARNING: HARD-CODED STATE INDEX")
+        # state_index = [0, 1]
+        # for i, istate in enumerate(range(1)):#enumerate(state_index):
         for i, istate in enumerate(state_index):
             print("")
             print(f"    Calculation Summary: State {i}")
@@ -622,6 +637,8 @@ class RICMRCC:
             print("    Relaxed ric-MRCC Correlation Energy: {: 20.12f}".format(self.relaxation_energy[istate] + self.correlation_energy))
             print("    Relaxed ric-MRCC Total Energy: {: 20.12f}".format(self.total_energy_relaxed[istate]))
             self.ref.cisolver.print_ci_vector(state=istate, prtol=0.19)
+            # save the CI vector as the initial guess for the next iteration
+            # self.ref.ci_coeff_init[:, i] = self.ref.cisolver.coef[:, istate].copy()
             # record energies
             relaxation_energy[i] = self.relaxation_energy[istate]
             correlation_energy[i] = self.relaxation_energy[istate] + self.correlation_energy

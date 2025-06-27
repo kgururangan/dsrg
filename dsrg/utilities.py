@@ -20,6 +20,15 @@ def rotate_3b(Ua_L, Ub_L, Ua_R, Ub_R, W):
 def rotate_3c(Ua_L, Ub_L, Ua_R, Ub_R, W):
     return np.einsum("abcijk,ap,bq,cr,is,jt,ku->pqrstu", W, np.conj(Ua_L), np.conj(Ub_L), np.conj(Ub_L), Ua_R, Ub_R, Ub_R, optimize=True)
 
+def inv_rotate_1(U_L, U_R, F):
+    return np.einsum("ij,pi,qj->pq", F, np.conj(U_L), U_R, optimize=True)
+
+def inv_rotate_2s(U_L, U_R, V):
+    return np.einsum("ijkl,pi,qj,rk,sl->pqrs", V, np.conj(U_L), np.conj(U_L), U_R, U_R, optimize=True)
+
+def inv_rotate_2(Ua_L, Ub_L, Ua_R, Ub_R, V):
+    return np.einsum("ijkl,pi,qj,rk,sl->pqrs", V, np.conj(Ua_L), np.conj(Ub_L), Ua_R, Ub_R, optimize=True)
+
 def flatten_dict_to_vector(d):
     return np.concatenate([v.ravel() for v in d.values()])
 
